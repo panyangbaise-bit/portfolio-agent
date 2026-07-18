@@ -18,4 +18,4 @@ if [ ! -f .env ]; then
 fi
 
 echo "🚀 Starting Streamlit..."
-streamlit run app/main.py --server.port 8501
+python3 -m streamlit run app/main.py --server.port 8501
