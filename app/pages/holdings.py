@@ -23,8 +23,8 @@ with tab_add:
             name = st.text_input("Display Name (optional)", placeholder="e.g., 华夏半导体材料ETF联接C")
             market = st.selectbox("Market", ["US", "CN", "HK", "CRYPTO"])
         with col2:
-            shares = st.number_input("Shares / Quantity", min_value=0.0, step=1.0)
-            cost_basis = st.number_input("Cost Basis (per share/unit)", min_value=0.0, step=0.01)
+            shares = st.number_input("Shares / Quantity", min_value=0.0, step=0.0001, format="%.10f")
+            cost_basis = st.number_input("Cost Basis (per share/unit)", min_value=0.0, step=0.0001, format="%.10f")
 
         position_type = st.radio(
             "Position Type", ["core", "satellite"], horizontal=True,
@@ -72,9 +72,9 @@ with tab_edit:
             with st.expander(f"{display} — {h.shares} shares @ {h.cost_basis} ({h.position_type})"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    new_shares = st.number_input("Shares", value=float(h.shares), key=f"shares_{h.id}")
+                    new_shares = st.number_input("Shares", value=float(h.shares), step=0.0001, format="%.10f", key=f"shares_{h.id}")
                 with col2:
-                    new_cost = st.number_input("Cost Basis", value=float(h.cost_basis), key=f"cost_{h.id}")
+                    new_cost = st.number_input("Cost Basis", value=float(h.cost_basis), step=0.0001, format="%.10f", key=f"cost_{h.id}")
                 with col3:
                     new_type = st.selectbox(
                         "Type", ["core", "satellite"],
