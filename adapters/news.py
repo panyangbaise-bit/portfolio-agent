@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import requests
 
 from config import config
@@ -15,7 +15,8 @@ class WallStreetCNAdapter:
         try:
             resp = requests.get(url, params={"channel": "global", "limit": limit}, timeout=10)
             resp.raise_for_status()
-            items = resp.json().get("data", {}).get("items", [])
+            items = resp.json().get("data", {}) or {}
+            items = items.get("items", [])
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] headlines fetch failed: {e}")
@@ -29,7 +30,8 @@ class WallStreetCNAdapter:
                 url, params={"channel": "global", "accept": "article", "limit": limit}, timeout=10,
             )
             resp.raise_for_status()
-            items = resp.json().get("data", {}).get("items", [])
+            items = resp.json().get("data", {}) or {}
+            items = items.get("items", [])
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] latest fetch failed: {e}")
@@ -41,7 +43,12 @@ class WallStreetCNAdapter:
         try:
             resp = requests.get(url, params={"query": query, "limit": limit}, timeout=10)
             resp.raise_for_status()
-            items = resp.json().get("data", {}).get("items", [])
+            data = resp.json().get("data", {})
+            if data is None:
+                return []
+            items = data.get("items", [])
+            if items is None:
+                return []
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] search failed for '{query}': {e}")
@@ -62,14 +69,16 @@ class WallStreetCNAdapter:
     def search_ticker_news(self, ticker: str, days: int = 7) -> list[dict]:
         """Search news for a specific ticker."""
         results = self.search(query=ticker, limit=5)
-        cutoff = datetime.utcnow().timestamp() - (days * 86400)
+        cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
         return [r for r in results if r.get("published_at", 0) >= cutoff]
 
     @staticmethod
     def _parse_items(items: list, is_hot: bool = False) -> list[dict]:
         parsed = []
-        for item in items:
+        for item in (items or []):
             resource = item if is_hot else item.get("resource", item)
+            if resource is None:
+                continue
             ts = resource.get("display_time", 0)
             parsed.append({
                 "title": resource.get("title", ""),
