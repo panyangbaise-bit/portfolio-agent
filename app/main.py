@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
-from db.repository import init_db
+from db.repository import init_db, engine
+from db.migrate import migrate
 from adapters.base import registry
 from adapters.us_market import USMarketAdapter
 from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
@@ -23,7 +24,8 @@ logger = logging.getLogger(__name__)
 def init():
     """Initialize all subsystems once at startup."""
     init_db()
-    logger.info("Database initialized.")
+    migrate(engine)
+    logger.info("Database initialized and migrated.")
 
     registry.register("US", USMarketAdapter())
     registry.register("CN", CNMarketAdapter())
