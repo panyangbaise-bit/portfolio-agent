@@ -1,3 +1,135 @@
 :root {
   --cp-bg: #05050a;
+  --cp-surface: #0c0c14;
+  --cp-border: #1e1e2e;
+  --cp-cyan: #00f0ff;
+  --cp-magenta: #ff2d6a;
+  --cp-amber: #ffb000;
+  --cp-text: #e8e8f0;
+  --cp-muted: #8a8a9a;
+}
+
+html, body, [data-testid="stAppViewContainer"] {
+  background-color: var(--cp-bg) !important;
+  color: var(--cp-text);
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+}
+
+[data-testid="stAppViewContainer"] {
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+[data-testid="stHeader"] {
+  background: transparent !important;
+}
+
+[data-testid="stSidebar"] {
+  background-color: var(--cp-surface) !important;
+  border-right: 1px solid var(--cp-cyan);
+  box-shadow: 4px 0 24px rgba(0, 240, 255, 0.12);
+}
+
+[data-testid="stSidebar"] * {
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+}
+
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+  font-family: "Orbitron", sans-serif !important;
+  color: var(--cp-cyan) !important;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
+}
+
+h1, h2, h3, [data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+  font-family: "Orbitron", sans-serif !important;
+  letter-spacing: 0.04em;
+}
+
+h1 {
+  color: var(--cp-cyan) !important;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
+}
+
+[data-testid="stMetric"] {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-cyan);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.03);
+}
+
+[data-testid="stMetricLabel"] {
+  color: var(--cp-muted) !important;
+  font-family: "Share Tech Mono", ui-monospace, monospace !important;
+}
+
+[data-testid="stMetricValue"] {
+  color: var(--cp-text) !important;
+  font-family: "Orbitron", sans-serif !important;
+}
+
+div[data-testid="stButton"] > button[kind="primary"],
+button[data-testid="baseButton-primary"] {
+  background: var(--cp-magenta) !important;
+  border: 1px solid var(--cp-magenta) !important;
+  color: #fff !important;
+  font-family: "Orbitron", sans-serif !important;
+  box-shadow: 0 0 14px rgba(255, 45, 106, 0.45);
+}
+
+div[data-testid="stButton"] > button[kind="primary"]:hover,
+button[data-testid="baseButton-primary"]:hover {
+  box-shadow: 0 0 22px rgba(255, 45, 106, 0.75), 0 0 8px rgba(0, 240, 255, 0.35);
+  border-color: var(--cp-cyan) !important;
+}
+
+div[data-testid="stButton"] > button,
+button[data-testid="baseButton-secondary"] {
+  border: 1px solid var(--cp-cyan) !important;
+  color: var(--cp-cyan) !important;
+  background: transparent !important;
+  font-family: "Share Tech Mono", ui-monospace, monospace !important;
+}
+
+hr, [data-testid="stDecorator"] {
+  border-color: transparent !important;
+}
+
+hr {
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, var(--cp-cyan), var(--cp-magenta), transparent) !important;
+  border: none !important;
+}
+
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {
+  border: 1px solid var(--cp-border);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.08);
+}
+
+[data-testid="stPopoverButton"] button,
+button[kind="secondary"] {
+  border: 1px solid var(--cp-cyan) !important;
+  color: var(--cp-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  font-family: "Orbitron", sans-serif !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+}
+
+textarea, [data-testid="stTextArea"] textarea,
+[data-testid="stTextInput"] input,
+[data-baseweb="select"] {
+  background-color: var(--cp-surface) !important;
+  color: var(--cp-text) !important;
+  border-color: var(--cp-border) !important;
+}
+
+.stAlert {
+  border-left: 3px solid var(--cp-cyan);
 }
