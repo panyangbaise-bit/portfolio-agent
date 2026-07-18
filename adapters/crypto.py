@@ -1,11 +1,16 @@
 from datetime import datetime
 from typing import Optional
 from pycoingecko import CoinGeckoAPI
+import requests
 
 from adapters.base import MarketAdapter
 
 
 cg = CoinGeckoAPI()
+
+# Short timeout for API calls — fail fast, don't block dashboard
+cg.session.timeout = 10
+cg.session.headers.update({"User-Agent": "portfolio-agent/1.0"})
 
 TICKER_TO_ID = {
     "BTC": "bitcoin",

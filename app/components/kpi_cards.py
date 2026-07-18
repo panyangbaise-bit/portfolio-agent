@@ -1,15 +1,6 @@
 import streamlit as st
 from db.repository import get_session, get_all_holdings, get_pending_recommendations
-from adapters.base import registry as adapter_registry
-
-
-def _fetch_price(h):
-    try:
-        adapter = adapter_registry.get(h.market)
-        data = adapter.get_price(h.ticker)
-        return data.get("price")
-    except Exception:
-        return None
+from app.components.price_fetcher import fetch_price
 
 
 def render_kpi_cards():
@@ -28,7 +19,7 @@ def render_kpi_cards():
     for h in holdings:
         cost = h.shares * h.cost_basis
         total_cost += cost
-        price = _fetch_price(h)
+        price = fetch_price(h.ticker, h.market)
         if price:
             total_market_value += h.shares * price
             has_live_data = True
