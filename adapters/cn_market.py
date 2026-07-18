@@ -162,69 +162,96 @@ class CNMarketAdapter(MarketAdapter):
 
 
 class HKMarketAdapter(MarketAdapter):
-    """Hong Kong market data via akshare.
+    """Hong Kong market data via yfinance.
 
-    Ticker format: akshare uses numeric codes without suffix (e.g., "02026").
-    Users may enter "02026.HK" — we strip the ".HK" automatically.
+    Ticker conversion: "02026.HK" or "02026" → strip .HK → strip leading
+    zeros → append .HK → "2026.HK" (yfinance format).
     """
 
     MARKET = "HK"
 
     @staticmethod
-    def _clean(ticker: str) -> str:
-        """Strip .HK suffix if present."""
-        return ticker.upper().replace(".HK", "")
+    def _to_yf_ticker(ticker: str) -> str:
+        """Convert user ticker to yfinance HK format.
+
+        "02026.HK" → "2026.HK", "00700.HK" → "0700.HK"
+        """
+        t = ticker.upper().replace(".HK", "").lstrip("0")
+        return f"{t}.HK"
+
+    @staticmethod
+    def _safe_pct(value) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            v = float(value)
+            return round(v, 2) if abs(v) < 100 else v
+        except (ValueError, TypeError):
+            return None
 
     def get_price(self, ticker: str) -> dict:
-        symbol = self._clean(ticker)
-        # Use single-stock history to avoid fetching all HK stocks
-        df = ak.stock_hk_hist(symbol=symbol, period="daily", adjust="qfq")
-        if df.empty:
-            raise ValueError(f"Ticker {symbol} not found")
-        latest = df.iloc[-1]
-        prev = df.iloc[-2] if len(df) >= 2 else latest
-        price = float(latest["收盘"])
-        prev_price = float(prev["收盘"]) if prev is not None else price
-        change_pct = round((price / prev_price - 1) * 100, 2) if prev_price else 0.0
+        import yfinance as yf
+        symbol = self._to_yf_ticker(ticker)
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        fast = stock.fast_info
+        price = fast.get("lastPrice") or info.get("currentPrice")
+        if price is None:
+            raise ValueError(f"No price data for {symbol}")
         return {
-            "ticker": symbol,
-            "price": price,
-            "currency": "HKD",
-            "change_pct": change_pct,
-            "volume": float(latest["成交量"]) if "成交量" in latest and latest["成交量"] else None,
+            "ticker": ticker.upper().replace(".HK", ""),
+            "price": float(price),
+            "currency": info.get("currency", "HKD"),
+            "change_pct": self._safe_pct(info.get("regularMarketChangePercent")),
+            "volume": info.get("regularMarketVolume"),
             "timestamp": datetime.now().isoformat(),
         }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
-        symbol = self._clean(ticker)
-        df = ak.stock_hk_hist(symbol=symbol, period="daily", adjust="qfq")
+        import yfinance as yf
+        symbol = self._to_yf_ticker(ticker)
+        stock = yf.Ticker(symbol)
+        df = stock.history(period=period)
         if df.empty:
             return []
         return [
             {
-                "date": str(row["日期"])[:10],
-                "open": float(row["开盘"]),
-                "high": float(row["最高"]),
-                "low": float(row["最低"]),
-                "close": float(row["收盘"]),
-                "volume": float(row["成交量"]) if "成交量" in row and row["成交量"] else None,
+                "date": idx.strftime("%Y-%m-%d"),
+                "open": round(row["Open"], 2),
+                "high": round(row["High"], 2),
+                "low": round(row["Low"], 2),
+                "close": round(row["Close"], 2),
+                "volume": int(row["Volume"]),
             }
-            for _, row in df.tail(90).iterrows()
+            for idx, row in df.iterrows()
         ]
 
     def get_financials(self, ticker: str) -> dict:
-        symbol = self._clean(ticker)
-        return {"ticker": symbol, "note": "HK financials via akshare limited; use manual input or alternative source"}
+        import yfinance as yf
+        symbol = self._to_yf_ticker(ticker)
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        return {
+            "ticker": ticker.upper().replace(".HK", ""),
+            "name": info.get("longName") or info.get("shortName"),
+            "report_date": str(info.get("lastFiscalYearEnd", ""))[:10] if info.get("lastFiscalYearEnd") else None,
+            "revenue": info.get("totalRevenue"),
+            "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
+            "eps": info.get("trailingEps"),
+            "pe_ratio": info.get("trailingPE"),
+            "pb_ratio": info.get("priceToBook"),
+            "roe": self._safe_pct(info.get("returnOnEquity")),
+            "market_cap": info.get("marketCap"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+        }
 
     def get_market_snapshot(self) -> dict:
-        try:
-            df = ak.stock_hk_index_daily_em()
-            if df.empty:
-                return {"index_name": "恒生指数", "error": "no data"}
-            latest = df.iloc[-1]
-            return {
-                "index_name": "恒生指数",
-                "current": float(latest.get("close", 0) or latest.get("收盘", 0)),
-            }
-        except Exception as e:
-            return {"index_name": "恒生指数", "error": str(e)}
+        import yfinance as yf
+        hsi = yf.Ticker("^HSI")
+        info = hsi.fast_info
+        return {
+            "index_name": "恒生指数",
+            "current": info.get("lastPrice"),
+            "change_pct": self._safe_pct(getattr(info, "regularMarketChangePercent", None)),
+        }
