@@ -17,7 +17,9 @@ def render_holdings_table():
 
     rows = []
     for h in holdings:
+        display = h.name if h.name else h.ticker
         rows.append({
+            "Name": display,
             "Ticker": h.ticker,
             "Market": h.market,
             "Type": "🔵 Core" if h.position_type == "core" else "🟠 Satellite",

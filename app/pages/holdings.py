@@ -19,11 +19,12 @@ with tab_add:
     with st.form("add_holding_form"):
         col1, col2 = st.columns(2)
         with col1:
-            ticker = st.text_input("Ticker Symbol", placeholder="e.g., AAPL, 600519, BTC")
+            ticker = st.text_input("Ticker Symbol", placeholder="e.g., AAPL, 600519, BTC, 020357")
+            name = st.text_input("Display Name (optional)", placeholder="e.g., 华夏半导体材料ETF联接C")
             market = st.selectbox("Market", ["US", "CN", "HK", "CRYPTO"])
         with col2:
             shares = st.number_input("Shares / Quantity", min_value=0.0, step=1.0)
-            cost_basis = st.number_input("Cost Basis (per share)", min_value=0.0, step=0.01)
+            cost_basis = st.number_input("Cost Basis (per share/unit)", min_value=0.0, step=0.01)
 
         position_type = st.radio(
             "Position Type", ["core", "satellite"], horizontal=True,
@@ -40,7 +41,7 @@ with tab_add:
                     holding = create_holding(
                         session, ticker=ticker.upper(), market=market,
                         shares=shares, cost_basis=cost_basis,
-                        position_type=position_type,
+                        position_type=position_type, name=name or None,
                     )
                     create_transaction(
                         session, holding.id, action="buy",
@@ -67,7 +68,8 @@ with tab_edit:
         st.info("No holdings to edit.")
     else:
         for h in holdings:
-            with st.expander(f"{h.ticker} — {h.shares} shares @ {h.cost_basis} ({h.position_type})"):
+            display = f"{h.name} ({h.ticker})" if h.name else h.ticker
+            with st.expander(f"{display} — {h.shares} shares @ {h.cost_basis} ({h.position_type})"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     new_shares = st.number_input("Shares", value=float(h.shares), key=f"shares_{h.id}")

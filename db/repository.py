@@ -25,10 +25,12 @@ def get_session() -> Session:
 # ── Holdings ──────────────────────────────────────────────
 
 def create_holding(session: Session, ticker: str, market: str, shares: float,
-                   cost_basis: float, position_type: str = "core") -> Holding:
+                   cost_basis: float, position_type: str = "core",
+                   name: str = None) -> Holding:
     holding = Holding(
         ticker=ticker.upper(), market=market.upper(), shares=shares,
         cost_basis=cost_basis, position_type=position_type,
+        name=name,
     )
     session.add(holding)
     session.commit()

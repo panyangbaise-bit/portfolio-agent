@@ -20,6 +20,7 @@ class Holding(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     market: Mapped[str] = mapped_column(String(10), nullable=False)
     shares: Mapped[float] = mapped_column(Float, nullable=False)
     cost_basis: Mapped[float] = mapped_column(Float, nullable=False)
