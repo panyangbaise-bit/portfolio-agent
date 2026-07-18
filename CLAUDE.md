@@ -56,9 +56,9 @@ grep -rn "->.*| None" --include="*.py" .
 
 Schema changes go through `db/migrate.py` (ALTER TABLE), not table drops. `rm portfolio.db` destroys user data. The migration runner fires automatically at startup in `app/main.py`.
 
-### HK ticker format
+### HK ticker format → yfinance
 
-akshare uses numeric codes without suffix. Entering `02026.HK` works — `HKMarketAdapter._clean()` strips `.HK` automatically.
+HK data now uses **yfinance** (akshare East Money API is unreliable). Ticker conversion: `02026.HK` → strip `.HK` → strip leading zeros → `2026.HK` (yfinance format). See `HKMarketAdapter._to_yf_ticker()`.
 
 ### CN fund detection
 
