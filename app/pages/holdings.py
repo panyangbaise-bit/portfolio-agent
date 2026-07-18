@@ -7,7 +7,7 @@ from db.repository import (
     get_transactions_for_holding,
 )
 
-st.title("📋 Holdings Management")
+st.title("Holdings Management")
 
 tab_add, tab_edit, tab_history = st.tabs(["Add Position", "Edit / Delete", "Transaction History"])
 

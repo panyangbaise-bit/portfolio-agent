@@ -3,7 +3,7 @@
 import streamlit as st
 from db.repository import get_session, get_recommendation_history
 
-st.title("📜 Decision History")
+st.title("Decision History")
 st.caption("Full audit trail of agent recommendations and your actions")
 
 session = get_session()

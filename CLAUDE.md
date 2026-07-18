@@ -33,6 +33,7 @@ Copy `.env.example` to `.env`:
 adapters/     Market data adapters (MarketAdapter ABC → yfinance/akshare/CoinGecko/WallStreetCN)
 agent/        LangGraph ReAct loop, system prompt, 10 tools, session tracking
 app/          Streamlit dashboard (main.py + components/ + pages/)
+app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme()
 db/           SQLAlchemy 2.0 models (9 tables) + repository + migration system
 scheduler/    APScheduler — 4 after-market jobs + hourly news poll
 notifier/     Telegram Bot
@@ -71,6 +72,10 @@ HK data now uses **yfinance** (akshare East Money API is unreliable). Ticker con
 ### CoinGecko timeout
 
 Crypto adapter sets `cg.session.timeout = 10` to fail fast on DNS issues. Without this, it retries for 30+ seconds and blocks the dashboard.
+
+### Ask Agent is a popover
+
+Dashboard Ask Agent uses `st.popover` (requires streamlit>=1.33). It does not sit in a right column — holdings are full width. Theme CSS is re-injected every Streamlit rerun from `app/main.py` via `inject_cyberpunk_theme()`.
 
 ## Maintenance Rule
 

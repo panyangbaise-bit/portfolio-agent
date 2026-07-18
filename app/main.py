@@ -16,6 +16,7 @@ from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler, stop_scheduler
 from notifier.telegram import send_welcome
+from app.styles.theme import inject_cyberpunk_theme
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -43,9 +44,10 @@ def init():
 
 st.set_page_config(
     page_title="Portfolio Agent",
-    page_icon="📊",
+    page_icon="⚡",
     layout="wide",
 )
+inject_cyberpunk_theme()
 
 if "initialized" not in st.session_state:
     init()
@@ -59,8 +61,8 @@ pages = {
     "📜 History": "app/pages/history.py",
 }
 
-st.sidebar.title("📊 Portfolio Agent")
-st.sidebar.caption("AI-Powered Investment Assistant")
+st.sidebar.title("Portfolio Agent")
+st.sidebar.caption("NEURAL LINK // INVESTMENT OS")
 
 # Use Streamlit's native page navigation
 page = st.sidebar.radio("Navigation", list(pages.keys()), label_visibility="collapsed")

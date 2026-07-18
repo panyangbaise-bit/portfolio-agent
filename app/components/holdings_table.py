@@ -45,13 +45,13 @@ def render_holdings_table():
     core = df[df["Type"].str.contains("Core")]
     satellite = df[df["Type"].str.contains("Satellite")]
 
-    st.subheader("🔵 Core Holdings")
+    st.subheader("Core Holdings")
     if not core.empty:
         st.dataframe(core.drop(columns=["Type"]), use_container_width=True, hide_index=True)
     else:
         st.caption("No core holdings.")
 
-    st.subheader("🟠 Satellite Holdings")
+    st.subheader("Satellite Holdings")
     if not satellite.empty:
         st.dataframe(satellite.drop(columns=["Type"]), use_container_width=True, hide_index=True)
     else:
