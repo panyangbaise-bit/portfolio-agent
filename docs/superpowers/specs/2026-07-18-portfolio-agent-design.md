@@ -135,14 +135,18 @@ Agent 不是被动等待 cron 调用的分析模块，而是系统的**中央大
 
 ### 5.1 自主循环
 
+使用 **LangChain / LangGraph** 构建 agent 的 tool-use 循环：
+
 ```
 1. Wake Up  → Cron 抓取新闻 / 用户提问 / 盘后定时触发
 2. Observe  → Agent 接收：新 headlines + 当前 portfolio 状态
-3. Reason   → Agent 推理："这条新闻对 AAPL 影响大，需查行情和财报"
+3. Reason   → LangGraph ReAct 循环：Agent 推理 → 调用 tools → 获取结果 → 继续推理
 4. Act      → Agent 按需调用 tools：get_price, get_kline, get_financials
 5. Decide   → 生成：建议 + 推理链 + 置信度 + 紧迫度
 6. Persist  → 落库 → 仪表盘更新 → Telegram 推送（如有高优先级建议）
 ```
+
+LangGraph 负责管理 tool-use 循环的状态机和终止条件，避免无限调用循环。
 
 ### 5.2 分析框架（按仓位类型）
 
@@ -277,7 +281,7 @@ save_recommendation(ticker, action, reasoning, confidence, urgency) -> dict
 | 层 | 技术 |
 |---|---|
 | UI | Streamlit |
-| Agent | Anthropic Claude API (tool-use) |
+| Agent | LangChain + Anthropic Claude API (tool-use agent) |
 | 数据 | yfinance, akshare, pycoingecko, 华尔街见闻 API |
 | 数据库 | SQLite (SQLAlchemy ORM) |
 | 调度 | APScheduler |
@@ -301,7 +305,8 @@ portfolio-agent/
 │       ├── holdings_table.py
 │       └── recommendation_card.py
 ├── agent/
-│   ├── core.py                  # Agent 主循环
+│   ├── core.py                  # LangGraph Agent 主循环
+│   ├── graph.py                 # LangGraph 状态图定义
 │   ├── system_prompt.py         # 系统提示词模板
 │   ├── tools.py                 # 工具注册 & 定义
 │   └── session.py               # 会话管理 & 持久化
