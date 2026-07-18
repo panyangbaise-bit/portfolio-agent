@@ -281,7 +281,7 @@ save_recommendation(ticker, action, reasoning, confidence, urgency) -> dict
 | 层 | 技术 |
 |---|---|
 | UI | Streamlit |
-| Agent | LangChain + Anthropic Claude API (tool-use agent) |
+| Agent | LangChain + DeepSeek API (OpenAI-compatible, tool-use agent) |
 | 数据 | yfinance, akshare, pycoingecko, 华尔街见闻 API |
 | 数据库 | SQLite (SQLAlchemy ORM) |
 | 调度 | APScheduler |
