@@ -1,0 +1,284 @@
+"""LangChain tool definitions for the portfolio agent.
+
+Each tool wraps an adapter method or DB query, presenting a clean
+interface to the LLM. The agent does not know about adapters, markets,
+or databases — it just calls these functions.
+"""
+
+from datetime import datetime
+from typing import Optional
+
+from langchain.tools import tool
+
+from db.repository import (
+    get_session, get_all_holdings, get_holding_by_ticker,
+    create_recommendation, get_recommendation_history as db_get_rec_history,
+    upsert_price,
+)
+from adapters.base import registry as adapter_registry
+from adapters.news import news_adapter
+
+
+# ── Portfolio Tools ───────────────────────────────────────
+
+@tool
+def get_portfolio() -> list[dict]:
+    """获取当前所有持仓列表，包括每个标的的代码、市场、股数、成本价和仓位类型。
+
+    Returns:
+        list[dict]: 持仓列表，每项含 ticker, market, shares, cost_basis, position_type, pnl_pct, weight_pct
+    """
+    session = get_session()
+    try:
+        holdings = get_all_holdings(session)
+        total_value = 0.0
+        values = []
+        for h in holdings:
+            try:
+                adapter = adapter_registry.get(h.market)
+                price_data = adapter.get_price(h.ticker)
+                current_price = price_data.get("price", 0) or 0
+            except Exception:
+                current_price = h.cost_basis
+            market_value = h.shares * current_price
+            total_value += market_value
+            pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
+            values.append({
+                "ticker": h.ticker,
+                "market": h.market,
+                "shares": h.shares,
+                "cost_basis": h.cost_basis,
+                "current_price": round(current_price, 2),
+                "position_type": h.position_type,
+                "pnl_pct": round(pnl_pct, 2),
+                "market_value": round(market_value, 2),
+                "holding_id": h.id,
+            })
+
+        for v in values:
+            v["weight_pct"] = round(v["market_value"] / total_value * 100, 2) if total_value > 0 else 0
+
+        return values
+    finally:
+        session.close()
+
+
+@tool
+def get_holding(ticker: str) -> dict:
+    """获取单个标的的持仓详情。
+
+    Args:
+        ticker: 标的代码，如 AAPL, 600519, 0700.HK, BTC
+
+    Returns:
+        dict: 持仓详情，含 ticker, market, shares, cost_basis, position_type, current_price, pnl_pct
+    """
+    session = get_session()
+    try:
+        h = get_holding_by_ticker(session, ticker.upper())
+        if not h:
+            return {"error": f"未找到标的: {ticker}"}
+        try:
+            adapter = adapter_registry.get(h.market)
+            price_data = adapter.get_price(h.ticker)
+            current_price = price_data.get("price", 0) or 0
+        except Exception:
+            current_price = h.cost_basis
+        pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
+        return {
+            "ticker": h.ticker,
+            "market": h.market,
+            "shares": h.shares,
+            "cost_basis": h.cost_basis,
+            "current_price": round(current_price, 2),
+            "position_type": h.position_type,
+            "pnl_pct": round(pnl_pct, 2),
+            "holding_id": h.id,
+        }
+    finally:
+        session.close()
+
+
+# ── Market Data Tools ─────────────────────────────────────
+
+@tool
+def get_price(ticker: str, market: str) -> dict:
+    """获取标的当前价格和日内变动。
+
+    Args:
+        ticker: 标的代码
+        market: 市场代码 — US, CN, HK, 或 CRYPTO
+
+    Returns:
+        dict: 含 ticker, price, currency, change_pct, volume, timestamp
+    """
+    adapter = adapter_registry.get(market)
+    return adapter.get_price(ticker)
+
+
+@tool
+def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
+    """获取标的历史K线数据。
+
+    Args:
+        ticker: 标的代码
+        market: 市场代码 — US, CN, HK, 或 CRYPTO
+        period: 时间周期 — 1mo, 3mo, 6mo, 1y, 5y
+
+    Returns:
+        list[dict]: K线数据列表，每项含 date, open, high, low, close, volume
+    """
+    adapter = adapter_registry.get(market)
+    return adapter.get_kline(ticker, period)
+
+
+@tool
+def get_financials(ticker: str, market: str) -> dict:
+    """获取标的最近财报数据，包括营收、EPS、PE、ROE等基本面指标。
+
+    Args:
+        ticker: 标的代码
+        market: 市场代码 — US, CN, HK, 或 CRYPTO
+
+    Returns:
+        dict: 含 ticker, report_date, revenue, revenue_growth, eps, pe_ratio, pb_ratio, roe 等
+    """
+    adapter = adapter_registry.get(market)
+    return adapter.get_financials(ticker)
+
+
+@tool
+def get_market_snapshot(market: str) -> dict:
+    """获取市场大盘指数概览。
+
+    Args:
+        market: 市场代码 — US (S&P 500), CN (上证指数), HK (恒生指数), CRYPTO (总市值)
+
+    Returns:
+        dict: 含 index_name, current, change_pct 等
+    """
+    adapter = adapter_registry.get(market)
+    return adapter.get_market_snapshot()
+
+
+# ── News Tools ────────────────────────────────────────────
+
+@tool
+def search_ticker_news(ticker: str, days: int = 7) -> list[dict]:
+    """搜索与某个标的相关的最近新闻。
+
+    Args:
+        ticker: 标的代码
+        days: 搜索最近几天的新闻，默认7天
+
+    Returns:
+        list[dict]: 新闻列表，每项含 title, url, summary, published_at
+    """
+    return news_adapter.search_ticker_news(ticker, days)
+
+
+@tool
+def get_market_headlines() -> list[dict]:
+    """获取最新的市场头条和要闻。
+
+    Returns:
+        list[dict]: 新闻列表，每项含 title, url, summary, published_at, author
+    """
+    headlines = news_adapter.get_headlines(10)
+    latest = news_adapter.get_latest_news(10)
+    seen = set()
+    merged = []
+    for item in headlines + latest:
+        key = item.get("title", "")
+        if key and key not in seen:
+            seen.add(key)
+            merged.append(item)
+    return merged[:15]
+
+
+# ── Recommendation Tools ──────────────────────────────────
+
+@tool
+def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
+    """获取历史建议记录。
+
+    Args:
+        ticker: 可选，指定标的代码来过滤
+        limit: 返回条数，默认20
+
+    Returns:
+        list[dict]: 历史建议列表
+    """
+    session = get_session()
+    try:
+        recs = db_get_rec_history(session, ticker=ticker, limit=limit)
+        return [
+            {
+                "id": r.id,
+                "ticker": r.ticker,
+                "action": r.action,
+                "reasoning": r.reasoning,
+                "confidence": r.confidence,
+                "urgency": r.urgency,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in recs
+        ]
+    finally:
+        session.close()
+
+
+@tool
+def save_recommendation(
+    ticker: str,
+    action: str,
+    reasoning: str,
+    confidence: float,
+    urgency: str = "low",
+    session_id: int = 0,
+) -> dict:
+    """保存一条投资建议到数据库。每次分析完成后调用此工具保存结论。
+
+    Args:
+        ticker: 标的代码
+        action: 建议操作 — buy_add, reduce, hold, watch
+        reasoning: 推理链条（2-4句话）
+        confidence: 置信度 0.0-1.0
+        urgency: 紧迫度 — low, medium, high
+        session_id: agent会话ID（自动传入，无需手动填写）
+
+    Returns:
+        dict: 保存成功的确认信息
+    """
+    db_session = get_session()
+    try:
+        rec = create_recommendation(
+            db_session, session_id=session_id,
+            ticker=ticker, action=action, reasoning=reasoning,
+            confidence=confidence, urgency=urgency,
+        )
+        return {
+            "status": "saved",
+            "recommendation_id": rec.id,
+            "ticker": rec.ticker,
+            "action": rec.action,
+        }
+    finally:
+        db_session.close()
+
+
+# ── Tool Collection ───────────────────────────────────────
+
+ALL_TOOLS = [
+    get_portfolio,
+    get_holding,
+    get_price,
+    get_kline,
+    get_financials,
+    get_market_snapshot,
+    search_ticker_news,
+    get_market_headlines,
+    get_recommendation_history,
+    save_recommendation,
+]
