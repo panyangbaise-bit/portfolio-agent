@@ -11,9 +11,10 @@ class Config:
     # Database
     DATABASE_URL: str = f"sqlite:///{PROJECT_ROOT / 'portfolio.db'}"
 
-    # Anthropic
-    ANTHROPIC_API_KEY: str = os.environ["ANTHROPIC_API_KEY"]
-    ANTHROPIC_MODEL: str = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-20251001")
+    # DeepSeek (OpenAI-compatible API)
+    DEEPSEEK_API_KEY: str = os.environ["DEEPSEEK_API_KEY"]
+    DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
