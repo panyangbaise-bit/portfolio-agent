@@ -75,12 +75,12 @@ def render_holdings_table(holdings=None, prices=None):
 
     st.subheader(t("holdings_table.core"))
     if not core.empty:
-        st.dataframe(_styled_holdings(core), use_container_width=True, hide_index=True)
+        st.dataframe(_styled_holdings(core), width="stretch", hide_index=True)
     else:
         st.caption(t("holdings_table.core_empty"))
 
     st.subheader(t("holdings_table.satellite"))
     if not satellite.empty:
-        st.dataframe(_styled_holdings(satellite), use_container_width=True, hide_index=True)
+        st.dataframe(_styled_holdings(satellite), width="stretch", hide_index=True)
     else:
         st.caption(t("holdings_table.satellite_empty"))

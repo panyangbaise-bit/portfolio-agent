@@ -7,7 +7,12 @@ import streamlit as st
 
 from app.i18n import enum_label, t
 from db.repository import get_session, list_analysis_runs, list_job_runs
-from scheduler.cron import get_scheduler_status
+from scheduler.cron import (
+    clear_manual_run_status,
+    get_manual_run_status,
+    get_scheduler_status,
+    trigger_job,
+)
 
 JOB_IDS = ("us_after_market", "cn_after_market", "hk_after_market", "crypto_daily", "hourly_news")
 
@@ -33,7 +38,7 @@ def _job_label(job_id, triggered_by):
 
 
 def render_job_schedule_table():
-    """Show registered APScheduler jobs and next run times."""
+    """Show registered APScheduler jobs with manual trigger buttons."""
     st.subheader(t("jobs.schedule.title"))
     jobs = get_scheduler_status()
     if not jobs:
@@ -43,17 +48,56 @@ def render_job_schedule_table():
             {t("col.job"): enum_label("job", job_id), t("col.id"): job_id, t("col.next_run"): "—"}
             for job_id in JOB_IDS
         ]
-        st.dataframe(pd.DataFrame(catalog), use_container_width=True, hide_index=True)
-        return
+        st.dataframe(pd.DataFrame(catalog), width="stretch", hide_index=True)
+    else:
+        rows = []
+        for j in jobs:
+            rows.append({
+                t("col.job"): _job_label(j.get("id"), ""),
+                t("col.id"): j.get("id", "—"),
+                t("col.next_run"): j.get("next_run", "—"),
+            })
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
-    rows = []
-    for j in jobs:
-        rows.append({
-            t("col.job"): _job_label(j.get("id"), ""),
-            t("col.id"): j.get("id", "—"),
-            t("col.next_run"): j.get("next_run", "—"),
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    # --- Manual trigger buttons ---
+    st.caption("**Manual Trigger** — run any job immediately:")
+    job_ids = [j.get("id") for j in jobs] if jobs else list(JOB_IDS)
+    cols = st.columns(len(job_ids))
+    for i, job_id in enumerate(job_ids):
+        with cols[i]:
+            job_label = enum_label("job", job_id)
+            run_status = get_manual_run_status(job_id)
+
+            if run_status and run_status["status"] == "running":
+                st.button(
+                    t("jobs.trigger.running"),
+                    key=f"trigger_{job_id}",
+                    disabled=True,
+                    use_container_width=True,
+                )
+            elif run_status and run_status["status"] == "completed":
+                st.success(t("jobs.trigger.completed", job=job_label))
+                if st.button("OK", key=f"clear_{job_id}"):
+                    clear_manual_run_status(job_id)
+                    st.rerun()
+            elif run_status and run_status["status"] == "failed":
+                error_msg = run_status.get("error", "unknown error")
+                st.error(t("jobs.trigger.failed", job=job_label, error=error_msg))
+                if st.button("OK", key=f"clear_{job_id}"):
+                    clear_manual_run_status(job_id)
+                    st.rerun()
+            else:
+                if st.button(
+                    t("jobs.trigger.button"),
+                    key=f"trigger_{job_id}",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    ok = trigger_job(job_id)
+                    if ok:
+                        st.rerun()
+                    else:
+                        st.error(t("jobs.trigger.unknown", job_id=job_id))
 
 
 def render_analysis_runs_table(limit: int = 50):
@@ -84,7 +128,7 @@ def render_analysis_runs_table(limit: int = 50):
             t("col.summary"): r["summary"],
         })
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def render_job_run_table(limit: int = 50):
@@ -110,7 +154,7 @@ def render_job_run_table(limit: int = 50):
         }
         for run in runs
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def render_analysis_section():

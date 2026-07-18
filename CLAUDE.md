@@ -13,6 +13,9 @@ pip install -r requirements.txt
 
 # Test
 PYTHONPATH=. python3 -m pytest tests -v
+
+# Manual job trigger test (triggers all 5 scheduled jobs via threading)
+PYTHONPATH=. python3 tests/test_manual_trigger_all_jobs.py
 ```
 
 ## Environment
@@ -99,6 +102,14 @@ Streamlit auto-discovers `pages/` next to the entry script and shows top/sidebar
 ### Theme CSS injection
 
 Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.html` (reserves a huge empty layout slot). Use `inject_cyberpunk_theme()` in `app/styles/theme.py`: a height-0 `components.html` iframe writes a `<style>` tag into `window.parent.document.head` and hides its own host node.
+
+### Manual job triggers
+
+Dashboard **Scheduled Jobs** table has "▶ Run Now" buttons that call `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result.
+
+### Telegram chat ID discovery
+
+`notifier/telegram.py` has `discover_chat_id()` which calls `getUpdates` to find the most recent chat ID. This requires Telegram API to be reachable (blocked from mainland China without a proxy). Fallback: set `TELEGRAM_CHAT_ID` manually in `.env`.
 
 ## Maintenance Rule
 

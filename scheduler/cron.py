@@ -1,6 +1,7 @@
 """APScheduler configuration — starts and manages all scheduled jobs."""
 
 import logging
+import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -14,9 +15,20 @@ from scheduler.jobs import (
 
 logger = logging.getLogger(__name__)
 
-from typing import Optional
+from typing import Callable, Optional
 
 _scheduler: Optional[BackgroundScheduler] = None
+
+JOB_FUNCTIONS: dict[str, Callable] = {
+    "us_after_market": job_after_market_us,
+    "cn_after_market": job_after_market_cn,
+    "hk_after_market": job_after_market_hk,
+    "crypto_daily": job_after_market_crypto,
+    "hourly_news": job_hourly_news_poll,
+}
+
+# Track manual trigger runs for the dashboard to poll.
+_manual_runs: dict[str, dict] = {}
 
 
 def start_scheduler():
@@ -92,3 +104,42 @@ def get_scheduler_status() -> list[dict]:
             "next_run": str(job.next_run_time) if job.next_run_time else "paused",
         })
     return jobs
+
+
+def trigger_job(job_id: str) -> bool:
+    """Manually trigger a job by its ID. Runs in a background thread.
+
+    Returns True if the job was found and started, False if unknown job_id.
+    """
+    func = JOB_FUNCTIONS.get(job_id)
+    if not func:
+        logger.warning(f"Unknown job_id for manual trigger: {job_id}")
+        return False
+
+    _manual_runs[job_id] = {"status": "running", "started_at": None, "error": None}
+
+    def _wrapper():
+        import datetime as _dt
+        _manual_runs[job_id]["started_at"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            func()
+            _manual_runs[job_id]["status"] = "completed"
+        except Exception as e:
+            logger.error(f"Manual trigger {job_id} failed: {e}")
+            _manual_runs[job_id]["status"] = "failed"
+            _manual_runs[job_id]["error"] = str(e)
+
+    thread = threading.Thread(target=_wrapper, daemon=True, name=f"manual-{job_id}")
+    thread.start()
+    logger.info(f"Manual trigger started for job: {job_id}")
+    return True
+
+
+def get_manual_run_status(job_id: str) -> Optional[dict]:
+    """Return the status of a manually triggered run, or None if never triggered."""
+    return _manual_runs.get(job_id)
+
+
+def clear_manual_run_status(job_id: str):
+    """Clear the manual run status so the button resets."""
+    _manual_runs.pop(job_id, None)

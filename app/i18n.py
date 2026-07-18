@@ -136,6 +136,20 @@ _EN = {
     "job_status.completed": "Completed",
     "job_status.skipped": "Skipped",
     "job_status.failed": "Failed",
+    "jobs.trigger.button": "▶ Run Now",
+    "jobs.trigger.running": "⏳ Running...",
+    "jobs.trigger.completed": "✅ {job} completed",
+    "jobs.trigger.failed": "❌ {job} failed: {error}",
+    "jobs.trigger.unknown": "Unknown job ID: {job_id}",
+    "col.trigger": "Trigger",
+    "telegram.title": "Telegram Bot",
+    "telegram.configured": "✅ Bot configured — chat ID: {chat_id}",
+    "telegram.not_configured": "⚠️ Bot token not set in .env",
+    "telegram.no_chat": "⚠️ No chat ID found. Send a message to @{bot_username} on Telegram, then refresh.",
+    "telegram.discovering": "🔍 Discovering chat ID...",
+    "telegram.chat_id_label": "Chat ID",
+    "telegram.chat_id_placeholder": "Enter your Telegram chat ID",
+    "telegram.chat_id_set": "Set Chat ID",
 }
 
 _ZH = {
@@ -261,6 +275,20 @@ _ZH = {
     "job_status.completed": "已完成",
     "job_status.skipped": "已跳过",
     "job_status.failed": "失败",
+    "jobs.trigger.button": "▶ 立即执行",
+    "jobs.trigger.running": "⏳ 运行中...",
+    "jobs.trigger.completed": "✅ {job} 已完成",
+    "jobs.trigger.failed": "❌ {job} 失败: {error}",
+    "jobs.trigger.unknown": "未知任务 ID: {job_id}",
+    "col.trigger": "操作",
+    "telegram.title": "Telegram 机器人",
+    "telegram.configured": "✅ 机器人已配置 — 聊天 ID: {chat_id}",
+    "telegram.not_configured": "⚠️ 未在 .env 中设置机器人 token",
+    "telegram.no_chat": "⚠️ 未找到聊天 ID。请在 Telegram 上向 @{bot_username} 发送一条消息，然后刷新页面。",
+    "telegram.discovering": "🔍 正在发现聊天 ID...",
+    "telegram.chat_id_label": "聊天 ID",
+    "telegram.chat_id_placeholder": "输入你的 Telegram 聊天 ID",
+    "telegram.chat_id_set": "设置聊天 ID",
 }
 
 LOCALES = {"en": _EN, "zh": _ZH}

@@ -70,7 +70,18 @@ class WallStreetCNAdapter:
         """Search news for a specific ticker."""
         results = self.search(query=ticker, limit=5)
         cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
-        return [r for r in results if r.get("published_at", 0) >= cutoff]
+        filtered = []
+        for r in results:
+            pub = r.get("published_at")
+            if pub is None:
+                continue
+            try:
+                pub_ts = datetime.fromisoformat(pub).timestamp() if isinstance(pub, str) else float(pub)
+            except (ValueError, TypeError):
+                continue
+            if pub_ts >= cutoff:
+                filtered.append(r)
+        return filtered
 
     @staticmethod
     def _parse_items(items: list, is_hot: bool = False) -> list[dict]:
