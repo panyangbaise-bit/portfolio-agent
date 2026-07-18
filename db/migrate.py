@@ -19,6 +19,36 @@ MIGRATIONS = [
         "v1_add_holdings_name",
         "ALTER TABLE holdings ADD COLUMN name VARCHAR(100)",
     ),
+    (
+        "v2_agent_sessions_job_market",
+        "ALTER TABLE agent_sessions ADD COLUMN job_id VARCHAR(40)",
+    ),
+    (
+        "v2b_agent_sessions_market",
+        "ALTER TABLE agent_sessions ADD COLUMN market VARCHAR(10)",
+    ),
+    (
+        "v2c_agent_sessions_summary",
+        "ALTER TABLE agent_sessions ADD COLUMN summary TEXT",
+    ),
+    (
+        "v3_create_job_runs",
+        """
+        CREATE TABLE IF NOT EXISTS job_runs (
+            id INTEGER PRIMARY KEY,
+            job_id VARCHAR(40) NOT NULL,
+            job_name VARCHAR(100) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'running',
+            details TEXT,
+            started_at DATETIME NOT NULL,
+            ended_at DATETIME
+        )
+        """,
+    ),
+    (
+        "v3b_job_runs_index",
+        "CREATE INDEX IF NOT EXISTS ix_job_runs_job_started ON job_runs (job_id, started_at)",
+    ),
 ]
 
 

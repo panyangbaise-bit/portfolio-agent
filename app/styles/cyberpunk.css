@@ -7,6 +7,8 @@
   --cp-amber: #ffb000;
   --cp-text: #e8e8f0;
   --cp-muted: #8a8a9a;
+  --cp-gain: #00ff9c;
+  --cp-loss: #ff2d6a;
 }
 
 html, body, [data-testid="stAppViewContainer"] {
@@ -22,18 +24,48 @@ html, body, [data-testid="stAppViewContainer"] {
   background-size: 48px 48px;
 }
 
+/* Keep the Streamlit top chrome thin — do not inflate header height */
+header[data-testid="stHeader"],
 [data-testid="stHeader"] {
-  background: transparent !important;
+  background: rgba(5, 5, 10, 0.92) !important;
+  height: 2.75rem !important;
+  min-height: 2.75rem !important;
+  max-height: 2.75rem !important;
+}
+
+.main .block-container {
+  padding-top: 0.75rem !important;
+  padding-bottom: 2rem !important;
+}
+
+/* Sidebar collapse (open state) + expand (closed state) */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: var(--cp-cyan) !important;
+  background-color: var(--cp-surface) !important;
+  border: 1px solid var(--cp-cyan) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.35) !important;
+}
+
+[data-testid="stSidebarCollapseButton"] svg,
+[data-testid="stExpandSidebarButton"] svg,
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="collapsedControl"] svg {
+  fill: var(--cp-cyan) !important;
+  stroke: var(--cp-cyan) !important;
+  color: var(--cp-cyan) !important;
 }
 
 [data-testid="stSidebar"] {
   background-color: var(--cp-surface) !important;
   border-right: 1px solid var(--cp-cyan);
   box-shadow: 4px 0 24px rgba(0, 240, 255, 0.12);
-}
-
-[data-testid="stSidebar"] * {
-  font-family: "Share Tech Mono", ui-monospace, monospace;
 }
 
 [data-testid="stSidebar"] h1,
@@ -73,6 +105,32 @@ h1 {
   color: var(--cp-text) !important;
   font-family: "Orbitron", sans-serif !important;
 }
+
+/* P&L KPI card (custom html matching metric layout) */
+.cp-pnl-metric {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-cyan);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.03);
+  min-height: 5.5rem;
+}
+.cp-pnl-metric .label {
+  color: var(--cp-muted);
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+.cp-pnl-metric .value {
+  font-family: "Orbitron", sans-serif;
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-shadow: 0 0 10px currentColor;
+}
+.cp-pnl-metric .value.gain { color: var(--cp-gain) !important; }
+.cp-pnl-metric .value.loss { color: var(--cp-loss) !important; }
+.cp-pnl-metric .value.flat { color: var(--cp-text) !important; }
 
 div[data-testid="stButton"] > button[kind="primary"],
 button[data-testid="baseButton-primary"] {

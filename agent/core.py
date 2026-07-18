@@ -14,13 +14,25 @@ from agent.system_prompt import (
 from adapters.news import news_adapter
 
 
+_MARKET_JOB_IDS = {
+    "US": "us_after_market",
+    "CN": "cn_after_market",
+    "HK": "hk_after_market",
+    "CRYPTO": "crypto_daily",
+}
+
+
 def run_after_market_analysis(market: str) -> str:
     """Run the daily post-market analysis for a given market.
 
     Called by the scheduler after each market closes.
     Returns a summary string for logging/notifications.
     """
-    session = AgentSessionManager(triggered_by="schedule")
+    session = AgentSessionManager(
+        triggered_by="schedule",
+        job_id=_MARKET_JOB_IDS.get(market, "after_market"),
+        market=market,
+    )
     session.start()
 
     market_names = {"US": "美股", "CN": "A股", "HK": "港股", "CRYPTO": "加密货币"}
@@ -36,10 +48,10 @@ def run_after_market_analysis(market: str) -> str:
         "extra_context": context,
     })
 
-    session.finish()
-
     last_msg = result["messages"][-1]
-    return last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    session.finish(summary=text)
+    return text
 
 
 def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
@@ -53,6 +65,8 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
 
     session = AgentSessionManager(
         triggered_by="event",
+        job_id="hourly_news",
+        market=None,
         news_snapshot={"count": len(news_items), "sample": news_items[:5]},
     )
     session.start()
@@ -68,10 +82,10 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         "extra_context": context,
     })
 
-    session.finish()
-
     last_msg = result["messages"][-1]
-    return last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    session.finish(summary=text)
+    return text
 
 
 def run_ad_hoc_query(question: str) -> str:
@@ -83,7 +97,7 @@ def run_ad_hoc_query(question: str) -> str:
     Returns:
         Agent's response text
     """
-    session = AgentSessionManager(triggered_by="manual")
+    session = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
     session.start()
 
     message = HumanMessage(content=question)
@@ -95,10 +109,10 @@ def run_ad_hoc_query(question: str) -> str:
         "extra_context": "",
     })
 
-    session.finish()
-
     last_msg = result["messages"][-1]
-    return last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    session.finish(summary=text)
+    return text
 
 
 def poll_news_for_portfolio(tickers: list[str]) -> list[dict]:

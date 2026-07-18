@@ -1,4 +1,5 @@
 import streamlit as st
+from app.i18n import enum_label, t
 from db.repository import get_session, get_pending_recommendations, record_user_action
 
 
@@ -11,12 +12,12 @@ def render_recommendations():
         session.close()
 
     if not recommendations:
-        st.info("No pending recommendations. Agent is monitoring your portfolio.")
+        st.info(t("rec.empty"))
         return
 
     action_emojis = {"buy_add": "🟢", "reduce": "🔴", "hold": "🟡", "watch": "👀"}
 
-    st.subheader("💡 Agent Recommendations")
+    st.subheader(t("rec.title"))
     for rec in recommendations:
         emoji = action_emojis.get(rec.action, "ℹ️")
         with st.container():
@@ -24,14 +25,22 @@ def render_recommendations():
             with cols[0]:
                 st.markdown(f"### {emoji}")
             with cols[1]:
-                st.markdown(f"**{rec.ticker}** — *{rec.action}*")
+                st.markdown(t(
+                    "rec.header",
+                    ticker=rec.ticker,
+                    action=enum_label("action", rec.action),
+                ))
                 st.caption(
-                    f"Confidence: {rec.confidence:.0%} | Urgency: {rec.urgency} | "
-                    f"{rec.created_at.strftime('%Y-%m-%d %H:%M')}"
+                    t(
+                        "rec.meta",
+                        confidence=f"{rec.confidence:.0%}",
+                        urgency=enum_label("urgency", rec.urgency),
+                        date=rec.created_at.strftime("%Y-%m-%d %H:%M"),
+                    )
                 )
                 st.write(rec.reasoning)
             with cols[2]:
-                if st.button("✅ Accept", key=f"accept_{rec.id}"):
+                if st.button(t("rec.accept"), key=f"accept_{rec.id}"):
                     db = get_session()
                     try:
                         record_user_action(db, rec.id, "accept")
@@ -39,7 +48,7 @@ def render_recommendations():
                         db.close()
                     st.rerun()
             with cols[3]:
-                if st.button("❌ Dismiss", key=f"dismiss_{rec.id}"):
+                if st.button(t("rec.dismiss"), key=f"dismiss_{rec.id}"):
                     db = get_session()
                     try:
                         record_user_action(db, rec.id, "dismiss")

@@ -12,14 +12,19 @@ class USMarketAdapter(MarketAdapter):
 
     def get_price(self, ticker: str) -> dict:
         stock = yf.Ticker(ticker)
-        info = stock.info
         fast = stock.fast_info
+        price = fast.get("lastPrice")
+        if price is None:
+            # Only request the heavier quote endpoint when the fast quote
+            # cannot provide a value.
+            info = stock.info
+            price = info.get("currentPrice")
         return {
             "ticker": ticker.upper(),
-            "price": fast.get("lastPrice") or info.get("currentPrice"),
-            "currency": info.get("currency", "USD"),
-            "change_pct": self._safe_pct(info.get("regularMarketChangePercent")),
-            "volume": info.get("regularMarketVolume"),
+            "price": price,
+            "currency": "USD",
+            "change_pct": None,
+            "volume": None,
             "timestamp": datetime.utcnow().isoformat(),
         }
 

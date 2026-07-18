@@ -16,6 +16,7 @@ from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler, stop_scheduler
 from notifier.telegram import send_welcome
+from app.i18n import t
 from app.styles.theme import inject_cyberpunk_theme
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
@@ -43,7 +44,7 @@ def init():
 # ── Streamlit App ─────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Portfolio Agent",
+    page_title="Portfolio Agent | 投资组合助手",
     page_icon="⚡",
     layout="wide",
 )
@@ -52,17 +53,25 @@ inject_cyberpunk_theme()
 if "initialized" not in st.session_state:
     init()
     st.session_state["initialized"] = True
+st.session_state.setdefault("locale", "en")
 
 
 # Navigation
+# Views live in app/views/ (NOT app/pages/) so Streamlit won't auto-add multipage tabs.
 pages = {
-    "📊 Dashboard": "app/pages/dashboard.py",
-    "📋 Holdings": "app/pages/holdings.py",
-    "📜 History": "app/pages/history.py",
+    t("nav.dashboard"): "app/views/dashboard.py",
+    t("nav.holdings"): "app/views/holdings.py",
+    t("nav.history"): "app/views/history.py",
 }
 
-st.sidebar.title("Portfolio Agent")
-st.sidebar.caption("NEURAL LINK // INVESTMENT OS")
+st.sidebar.title(t("app.title"))
+st.sidebar.caption(t("app.tagline"))
+st.sidebar.selectbox(
+    t("language.label"),
+    ["en", "zh"],
+    format_func=lambda locale: t("language." + locale),
+    key="locale",
+)
 
 # Use Streamlit's native page navigation
 page = st.sidebar.radio("Navigation", list(pages.keys()), label_visibility="collapsed")

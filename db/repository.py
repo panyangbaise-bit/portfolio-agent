@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from config import config
 from db.models import (
     Base, Holding, Transaction, PriceCache, NewsArticle, FinancialReport,
-    AgentSession, AgentToolCall, Recommendation, UserAction,
+    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction,
 )
 
 
@@ -98,6 +98,7 @@ def upsert_price(session: Session, ticker: str, market: str, date: datetime,
         existing.high = high
         existing.low = low
         existing.volume = volume
+        existing.source = source
         session.commit()
         return existing
     entry = PriceCache(
@@ -114,6 +115,18 @@ def get_price_history(session: Session, ticker: str, limit: int = 100) -> list[P
     return session.query(PriceCache).filter(
         PriceCache.ticker == ticker.upper()
     ).order_by(desc(PriceCache.date)).limit(limit).all()
+
+
+def get_latest_prices(session: Session, holdings: list) -> dict:
+    """Return the latest persisted closing price for each holding."""
+    prices = {}
+    for holding in holdings:
+        entry = session.query(PriceCache).filter(
+            PriceCache.ticker == holding.ticker.upper(),
+            PriceCache.market == holding.market.upper(),
+        ).order_by(desc(PriceCache.date)).first()
+        prices[(holding.market, holding.ticker)] = entry.close if entry else None
+    return prices
 
 
 # ── News ──────────────────────────────────────────────────
@@ -157,19 +170,94 @@ def save_financial_report(session: Session, ticker: str, market: str,
 # ── Agent Sessions ────────────────────────────────────────
 
 def create_agent_session(session: Session, triggered_by: str,
-                         news_snapshot: dict = None) -> AgentSession:
-    s = AgentSession(triggered_by=triggered_by, news_snapshot=news_snapshot)
+                         news_snapshot: dict = None,
+                         job_id: str = None,
+                         market: str = None) -> AgentSession:
+    s = AgentSession(
+        triggered_by=triggered_by,
+        news_snapshot=news_snapshot,
+        job_id=job_id,
+        market=market,
+    )
     session.add(s)
     session.commit()
     return s
 
 
-def end_agent_session(session: Session, session_id: int):
+def end_agent_session(session: Session, session_id: int, summary: str = None):
     s = session.query(AgentSession).filter(AgentSession.id == session_id).first()
     if s:
         s.status = "completed"
         s.ended_at = datetime.now(timezone.utc)
+        if summary is not None:
+            s.summary = summary
         session.commit()
+
+
+def list_analysis_runs(session: Session, limit: int = 50) -> list[dict]:
+    """Return agent sessions with recommendation aggregates for the dashboard table."""
+    runs = (
+        session.query(AgentSession)
+        .order_by(desc(AgentSession.started_at))
+        .limit(limit)
+        .all()
+    )
+    rows = []
+    for s in runs:
+        recs = s.recommendations or []
+        actions = []
+        max_conf = None
+        pending = 0
+        for r in recs:
+            actions.append(f"{r.ticker}:{r.action}")
+            if max_conf is None or r.confidence > max_conf:
+                max_conf = r.confidence
+            if r.status == "pending":
+                pending += 1
+        summary = s.summary or ""
+        if len(summary) > 120:
+            summary = summary[:117] + "..."
+        rows.append({
+            "id": s.id,
+            "started_at": s.started_at,
+            "ended_at": s.ended_at,
+            "job_id": s.job_id,
+            "market": s.market,
+            "triggered_by": s.triggered_by,
+            "status": s.status,
+            "rec_count": len(recs),
+            "pending_count": pending,
+            "actions": ", ".join(actions) if actions else "—",
+            "max_confidence": max_conf,
+            "summary": summary if summary else "—",
+        })
+    return rows
+
+
+def create_job_run(session: Session, job_id: str, job_name: str) -> JobRun:
+    """Record that a scheduled job has started."""
+    run = JobRun(job_id=job_id, job_name=job_name)
+    session.add(run)
+    session.commit()
+    return run
+
+
+def finish_job_run(session: Session, run_id: int, status: str,
+                   details: str = None):
+    """Store a completed, skipped, or failed scheduler job outcome."""
+    run = session.query(JobRun).filter(JobRun.id == run_id).first()
+    if run:
+        run.status = status
+        run.details = details
+        run.ended_at = datetime.now(timezone.utc)
+        session.commit()
+
+
+def list_job_runs(session: Session, limit: int = 50) -> list[JobRun]:
+    """Return the most recent scheduler outcomes for dashboard diagnostics."""
+    return session.query(JobRun).order_by(
+        desc(JobRun.started_at)
+    ).limit(limit).all()
 
 
 def log_tool_call(session: Session, session_id: int, tool_name: str,

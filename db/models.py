@@ -114,8 +114,11 @@ class AgentSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     triggered_by: Mapped[str] = mapped_column(String(20), nullable=False)
+    job_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    market: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
     news_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
@@ -123,7 +126,26 @@ class AgentSession(Base):
     recommendations = relationship("Recommendation", back_populates="session", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<AgentSession(id={self.id}, triggered_by='{self.triggered_by}')>"
+        return f"<AgentSession(id={self.id}, triggered_by='{self.triggered_by}', job_id='{self.job_id}')>"
+
+
+class JobRun(Base):
+    """Durable outcome record for every scheduler invocation."""
+    __tablename__ = "job_runs"
+    __table_args__ = (
+        Index("ix_job_runs_job_started", "job_id", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    job_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    def __repr__(self):
+        return f"<JobRun(id={self.id}, job_id='{self.job_id}', status='{self.status}')>"
 
 
 class AgentToolCall(Base):

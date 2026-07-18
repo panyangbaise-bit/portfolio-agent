@@ -1,6 +1,5 @@
 """Agent session management — tracks each agent activation and its tool calls."""
 
-from datetime import datetime, timezone
 from typing import Optional
 
 from db.repository import (
@@ -12,16 +11,30 @@ from db.repository import (
 class AgentSessionManager:
     """Wraps a DB agent session. Records tool calls transparently."""
 
-    def __init__(self, triggered_by: str, news_snapshot: Optional[dict] = None):
+    def __init__(
+        self,
+        triggered_by: str,
+        news_snapshot: Optional[dict] = None,
+        job_id: Optional[str] = None,
+        market: Optional[str] = None,
+    ):
         self.triggered_by = triggered_by
         self.news_snapshot = news_snapshot
+        self.job_id = job_id
+        self.market = market
         self.session_id: Optional[int] = None
         self._tool_call_count = 0
 
     def start(self) -> int:
         db = get_session()
         try:
-            s = create_agent_session(db, self.triggered_by, self.news_snapshot)
+            s = create_agent_session(
+                db,
+                self.triggered_by,
+                self.news_snapshot,
+                job_id=self.job_id,
+                market=self.market,
+            )
             self.session_id = s.id
             return self.session_id
         finally:
@@ -37,11 +50,11 @@ class AgentSessionManager:
         finally:
             db.close()
 
-    def finish(self):
+    def finish(self, summary: str = None):
         if self.session_id:
             db = get_session()
             try:
-                end_agent_session(db, self.session_id)
+                end_agent_session(db, self.session_id, summary=summary)
             finally:
                 db.close()
 

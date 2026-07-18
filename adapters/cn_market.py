@@ -193,17 +193,20 @@ class HKMarketAdapter(MarketAdapter):
         import yfinance as yf
         symbol = self._to_yf_ticker(ticker)
         stock = yf.Ticker(symbol)
-        info = stock.info
         fast = stock.fast_info
-        price = fast.get("lastPrice") or info.get("currentPrice")
+        price = fast.get("lastPrice")
+        if price is None:
+            # Avoid the slow metadata endpoint unless the fast quote is empty.
+            info = stock.info
+            price = info.get("currentPrice")
         if price is None:
             raise ValueError(f"No price data for {symbol}")
         return {
             "ticker": ticker.upper().replace(".HK", ""),
             "price": float(price),
-            "currency": info.get("currency", "HKD"),
-            "change_pct": self._safe_pct(info.get("regularMarketChangePercent")),
-            "volume": info.get("regularMarketVolume"),
+            "currency": "HKD",
+            "change_pct": None,
+            "volume": None,
             "timestamp": datetime.now().isoformat(),
         }
 

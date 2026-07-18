@@ -1,6 +1,6 @@
 # Portfolio Agent — CLAUDE.md
 
-AI-powered personal portfolio management agent. Multi-market (US/CN/HK/Crypto), autonomous reasoning via LangGraph + DeepSeek, Streamlit dashboard.
+AI-powered personal portfolio management agent for US/CN/HK/Crypto holdings. The Streamlit dashboard uses a LangGraph ReAct loop, LangChain tools, and DeepSeek through the OpenAI-compatible `ChatOpenAI` client.
 
 ## Commands
 
@@ -11,8 +11,8 @@ pip install -r requirements.txt
 # Run (requires .env with DEEPSEEK_API_KEY)
 ./run.sh                       # → http://localhost:8501
 
-# Push to GitHub
-git push origin main
+# Test
+PYTHONPATH=. python3 -m pytest tests -v
 ```
 
 ## Environment
@@ -31,18 +31,21 @@ Copy `.env.example` to `.env`:
 
 ```
 adapters/     Market data adapters (MarketAdapter ABC → yfinance/akshare/CoinGecko/WallStreetCN)
-agent/        LangGraph ReAct loop, system prompt, 10 tools, session tracking
-app/          Streamlit dashboard (main.py + components/ + pages/)
+agent/        LangGraph ReAct loop, system prompt, LangChain tools, session tracking
+app/          Streamlit dashboard (main.py + components/ + views/)
+app/i18n.py   English / Chinese UI strings, selected through sidebar locale control
 app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme()
-db/           SQLAlchemy 2.0 models (9 tables) + repository + migration system
+app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs)
+db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
 scheduler/    APScheduler — 4 after-market jobs + hourly news poll
 notifier/     Telegram Bot
 config.py     Central config from env vars
+tests/        pytest coverage for theme, i18n, price fallback, and job-run persistence
 ```
 
-**Data flow:** Adapter → Tool → LangGraph Agent (DeepSeek) → Recommendation → DB → Dashboard
+**Agent flow:** Market adapter → LangChain tool → LangGraph agent → recommendation/session → SQLite → Dashboard.
 
-**Key design:** Agent calls tools autonomously. Tools wrap adapters. Adapters normalize data across markets. All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
+**Key design:** `agent/graph.py` binds `agent.tools.ALL_TOOLS` to `langchain_openai.ChatOpenAI`, configured with `DEEPSEEK_BASE_URL` and `DEEPSEEK_MODEL`. All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
 
 ## Gotchas
 
@@ -65,17 +68,37 @@ HK data now uses **yfinance** (akshare East Money API is unreliable). Ticker con
 
 6-digit codes starting with `0` route to `ak.fund_open_fund_info_em` (NAV-based). Stock codes (6/0/3 prefix) try `stock_zh_a_spot_em` first. See `CNMarketAdapter._is_fund()`.
 
-### Price fetching is cached
+### Price snapshots and live fetching
 
-`app/components/price_fetcher.py` uses `@st.cache_data(ttl=60)`. Dashboard shows cached prices for 60s before re-fetching. Adapter failures return `None` — UI shows `—`.
+`app/components/price_fetcher.py` uses `@st.cache_data(ttl=60)`. Dashboard first renders `price_cache`; missing values are persisted from cost basis, so Price / P&L / Mkt Value survive restart and are never blank. A 1-second fragment refreshes holdings concurrently with a 2-second deadline; successful live values replace that day's fallback snapshot.
 
 ### CoinGecko timeout
 
-Crypto adapter sets `cg.session.timeout = 10` to fail fast on DNS issues. Without this, it retries for 30+ seconds and blocks the dashboard.
+Crypto adapter sets `cg.session.timeout = 10`. The dashboard-wide concurrent fetch deadline is 2 seconds, so a slow provider cannot block the first visible portfolio snapshot.
+
+### Agent sessions store job metadata
+
+`agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). Dashboard **Job Analysis History** reads these via `list_analysis_runs()`. Older rows may have null `job_id`/`market` until new runs complete.
+
+### Scheduler outcomes are persisted
+
+`job_runs` records every actual scheduler invocation as `completed`, `skipped`, or `failed`. This distinguishes an empty news poll or no-holdings skip from a job that has not reached its cron time. Cron jobs permit a five-minute startup/restart misfire grace period.
+
+### Localization
+
+Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh`; agent-generated reasoning and user-entered names are not translated.
 
 ### Ask Agent is a popover
 
 Dashboard Ask Agent uses `st.popover` (requires streamlit>=1.33). It does not sit in a right column — holdings are full width. Theme CSS is re-injected every Streamlit rerun from `app/main.py` via `inject_cyberpunk_theme()`.
+
+### Do not name view folder `pages/`
+
+Streamlit auto-discovers `pages/` next to the entry script and shows top/sidebar multipage tabs (`main`, `dashboard`, …). Custom navigation already lives in the sidebar radio — keep view modules under `app/views/`.
+
+### Theme CSS injection
+
+Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.html` (reserves a huge empty layout slot). Use `inject_cyberpunk_theme()` in `app/styles/theme.py`: a height-0 `components.html` iframe writes a `<style>` tag into `window.parent.document.head` and hides its own host node.
 
 ## Maintenance Rule
 

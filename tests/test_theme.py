@@ -1,4 +1,4 @@
-from app.styles.theme import load_cyberpunk_css, build_theme_markdown
+from app.styles.theme import load_cyberpunk_css, build_theme_css, build_theme_html
 
 
 def test_load_cyberpunk_css_returns_nonempty_when_file_exists(tmp_path, monkeypatch):
@@ -13,9 +13,15 @@ def test_load_cyberpunk_css_returns_empty_when_missing(tmp_path, monkeypatch):
     assert load_cyberpunk_css() == ""
 
 
-def test_build_theme_markdown_includes_style_and_fonts():
-    md = build_theme_markdown(":root{--cp-bg:#05050a;}")
-    assert "<style>" in md
-    assert "--cp-bg" in md
-    assert "fonts.googleapis.com" in md
-    assert "Orbitron" in md
+def test_build_theme_css_includes_fonts_and_host_hide():
+    css = build_theme_css(":root{--cp-bg:#05050a;}")
+    assert "--cp-bg" in css
+    assert "fonts.googleapis.com" in css
+    assert "Orbitron" in css
+    assert "stElementContainer" in css
+
+
+def test_build_theme_html_wraps_style():
+    html = build_theme_html(":root{--cp-bg:#05050a;}")
+    assert html.startswith("<style>")
+    assert html.rstrip().endswith("</style>")

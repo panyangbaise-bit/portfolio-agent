@@ -28,7 +28,8 @@ def start_scheduler():
         return
 
     _scheduler = BackgroundScheduler(
-        job_defaults={"coalesce": True, "max_instances": 1},
+        # Allow short server restarts without silently losing a scheduled run.
+        job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300},
     )
 
     _scheduler.add_job(
