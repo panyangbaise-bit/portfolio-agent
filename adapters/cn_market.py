@@ -39,7 +39,7 @@ class CNMarketAdapter(MarketAdapter):
             "currency": "CNY",
             "change_pct": float(r["涨跌幅"]),
             "volume": float(r["成交量"]) if "成交量" in r else None,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
     def _get_fund_price(self, ticker: str) -> dict:
@@ -57,7 +57,7 @@ class CNMarketAdapter(MarketAdapter):
             "currency": "CNY",
             "change_pct": change_pct,
             "volume": None,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now().isoformat(),
         }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
@@ -162,49 +162,59 @@ class CNMarketAdapter(MarketAdapter):
 
 
 class HKMarketAdapter(MarketAdapter):
-    """Hong Kong market data via akshare."""
+    """Hong Kong market data via akshare.
+
+    Ticker format: akshare uses numeric codes without suffix (e.g., "02026").
+    Users may enter "02026.HK" — we strip the ".HK" automatically.
+    """
 
     MARKET = "HK"
 
+    @staticmethod
+    def _clean(ticker: str) -> str:
+        """Strip .HK suffix if present."""
+        return ticker.upper().replace(".HK", "")
+
     def get_price(self, ticker: str) -> dict:
-        try:
-            df = ak.stock_hk_spot_em()
-            row = df[df["代码"] == ticker]
-            if row.empty:
-                raise ValueError(f"Ticker {ticker} not found")
-            r = row.iloc[0]
-            return {
-                "ticker": ticker,
-                "price": float(r["最新价"]),
-                "currency": "HKD",
-                "change_pct": float(r["涨跌幅"]),
-                "volume": float(r["成交量"]) if "成交量" in r else None,
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-        except Exception as e:
-            raise RuntimeError(f"Failed to get HK price for {ticker}: {e}")
+        symbol = self._clean(ticker)
+        # Use single-stock history to avoid fetching all HK stocks
+        df = ak.stock_hk_hist(symbol=symbol, period="daily", adjust="qfq")
+        if df.empty:
+            raise ValueError(f"Ticker {symbol} not found")
+        latest = df.iloc[-1]
+        prev = df.iloc[-2] if len(df) >= 2 else latest
+        price = float(latest["收盘"])
+        prev_price = float(prev["收盘"]) if prev is not None else price
+        change_pct = round((price / prev_price - 1) * 100, 2) if prev_price else 0.0
+        return {
+            "ticker": symbol,
+            "price": price,
+            "currency": "HKD",
+            "change_pct": change_pct,
+            "volume": float(latest["成交量"]) if "成交量" in latest and latest["成交量"] else None,
+            "timestamp": datetime.now().isoformat(),
+        }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
-        try:
-            df = ak.stock_hk_hist(symbol=ticker, period="daily", adjust="qfq")
-            if df.empty:
-                return []
-            return [
-                {
-                    "date": str(row["日期"])[:10],
-                    "open": float(row["开盘"]),
-                    "high": float(row["最高"]),
-                    "low": float(row["最低"]),
-                    "close": float(row["收盘"]),
-                    "volume": float(row["成交量"]) if "成交量" in row else None,
-                }
-                for _, row in df.tail(90).iterrows()
-            ]
-        except Exception as e:
-            raise RuntimeError(f"Failed to get HK kline for {ticker}: {e}")
+        symbol = self._clean(ticker)
+        df = ak.stock_hk_hist(symbol=symbol, period="daily", adjust="qfq")
+        if df.empty:
+            return []
+        return [
+            {
+                "date": str(row["日期"])[:10],
+                "open": float(row["开盘"]),
+                "high": float(row["最高"]),
+                "low": float(row["最低"]),
+                "close": float(row["收盘"]),
+                "volume": float(row["成交量"]) if "成交量" in row and row["成交量"] else None,
+            }
+            for _, row in df.tail(90).iterrows()
+        ]
 
     def get_financials(self, ticker: str) -> dict:
-        return {"ticker": ticker, "note": "HK financials via akshare limited; use manual input or alternative source"}
+        symbol = self._clean(ticker)
+        return {"ticker": symbol, "note": "HK financials via akshare limited; use manual input or alternative source"}
 
     def get_market_snapshot(self) -> dict:
         try:
