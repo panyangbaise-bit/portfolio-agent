@@ -61,10 +61,25 @@ ensure_packages() {
   apt-get install -y python3 python3-venv python3-pip git curl ca-certificates
 }
 
+pull_app_repo() {
+  local dir="$1"
+  [[ -d "${dir}/.git" ]] || die "${dir} 不是 git 仓库，无法更新"
+  log "git pull ${dir} (branch=${BRANCH})"
+  git -C "${dir}" fetch --depth 1 origin "${BRANCH}"
+  git -C "${dir}" checkout "${BRANCH}"
+  git -C "${dir}" pull --ff-only origin "${BRANCH}"
+}
+
 sync_app_code() {
+  # Recommended path: run from /opt/portfolio-agent → pull latest main.
   if [[ -f "${REPO_ROOT}/app/main.py" && -f "${REPO_ROOT}/requirements.txt" ]]; then
     if [[ "${REPO_ROOT}" == "${APP_DIR}" ]]; then
       log "使用当前仓库目录：${APP_DIR}"
+      if [[ -d "${APP_DIR}/.git" ]]; then
+        pull_app_repo "${APP_DIR}"
+      else
+        log "当前目录无 .git，跳过 pull（使用本地文件）"
+      fi
       return
     fi
     log "从 ${REPO_ROOT} 同步代码到 ${APP_DIR}"
@@ -89,10 +104,7 @@ sync_app_code() {
   fi
 
   if [[ -d "${APP_DIR}/.git" ]]; then
-    log "更新已有仓库 ${APP_DIR} (branch=${BRANCH})"
-    git -C "${APP_DIR}" fetch --depth 1 origin "${BRANCH}"
-    git -C "${APP_DIR}" checkout "${BRANCH}"
-    git -C "${APP_DIR}" pull --ff-only origin "${BRANCH}" || true
+    pull_app_repo "${APP_DIR}"
     return
   fi
 
