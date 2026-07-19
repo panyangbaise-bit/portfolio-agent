@@ -1,0 +1,26 @@
+[Unit]
+Description=Portfolio Agent (Streamlit + APScheduler)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=-__APP_DIR__/.env
+ExecStart=__APP_DIR__/.venv/bin/streamlit run app/main.py \
+  --server.port 8501 \
+  --server.address 0.0.0.0 \
+  --server.headless true \
+  --browser.gatherUsageStats false
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+# Harden a bit without breaking market-data HTTPS.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

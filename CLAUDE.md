@@ -16,6 +16,9 @@ PYTHONPATH=. python3 -m pytest tests -v
 
 # Manual job trigger test (triggers all 5 scheduled jobs via threading)
 PYTHONPATH=. python3 tests/test_manual_trigger_all_jobs.py
+
+# One-shot deploy on Ubuntu (venv + systemd)
+# sudo ./deploy/setup-server.sh
 ```
 
 ## Environment
@@ -46,6 +49,7 @@ app/          Streamlit dashboard (main.py + components/ + views/)
 app/i18n.py   English / Chinese UI strings, selected through top-banner EN/CN toggle
 app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_toggle()
 app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Recommendations → Jobs → History
+deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
 scheduler/    APScheduler — 4 after-market jobs + hourly news poll
 notifier/     Telegram Bot
@@ -145,6 +149,10 @@ DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` 
 ### Public password gate
 
 Before exposing the app on the public internet, set `AUTH_ENABLED=true` and `AUTH_PASSWORD=...` in `.env`. `app.auth.require_auth()` runs in `app/main.py` before any page UI. Wrong password increments a per-IP counter; at `AUTH_MAX_FAILURES` (default 3) the IP is written to `data/ip_blacklist.json` (gitignored) and blocked immediately. Unban by removing the IP from that file and restarting if needed.
+
+### Server deploy
+
+On Ubuntu, use `sudo ./deploy/setup-server.sh` from a git checkout (or let it clone into `/opt/portfolio-agent`). The script installs a venv, writes a systemd unit from `deploy/portfolio-agent.service`, and starts `portfolio-agent` on port `8501`. Edit `.env` after first install, then `systemctl restart portfolio-agent`.
 
 ## Maintenance Rule
 

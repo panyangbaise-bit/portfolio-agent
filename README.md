@@ -40,9 +40,24 @@ High-priority analysis pushed to your chat when jobs finish.
 - **Bilingual UI** — EN / CN toggle in the top banner
 - **Telegram** — optional startup and analysis notifications
 
+## Deploy on Ubuntu
+
+One-shot install (venv + systemd):
+
+```bash
+sudo apt update && sudo apt install -y git
+sudo git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
+cd /opt/portfolio-agent
+sudo ./deploy/setup-server.sh
+sudo nano /opt/portfolio-agent/.env   # DEEPSEEK_API_KEY + AUTH_PASSWORD
+sudo systemctl restart portfolio-agent
+```
+
+Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`.
+
 ## How to use
 
-1. **Install & configure**
+1. **Install & configure (local)**
    ```bash
    pip install -r requirements.txt
    cp .env.example .env
@@ -50,7 +65,7 @@ High-priority analysis pushed to your chat when jobs finish.
    # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, APP_TIMEZONE=Asia/Shanghai
    ```
 
-2. **Start the app**
+2. **Start the app (local)**
    ```bash
    ./run.sh
    ```

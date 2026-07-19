@@ -40,9 +40,24 @@
 - **双语界面**：右上角 EN / CN 切换
 - **Telegram**：可选启动与分析通知
 
+## 一键部署（Ubuntu）
+
+自动安装 venv 与 systemd 服务：
+
+```bash
+sudo apt update && sudo apt install -y git
+sudo git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
+cd /opt/portfolio-agent
+sudo ./deploy/setup-server.sh
+sudo nano /opt/portfolio-agent/.env   # 填 DEEPSEEK_API_KEY 与 AUTH_PASSWORD
+sudo systemctl restart portfolio-agent
+```
+
+访问 `http://你的服务器IP:8501`。日志：`journalctl -u portfolio-agent -f`。
+
 ## 使用方法
 
-1. **安装与配置**
+1. **本地安装与配置**
    ```bash
    pip install -r requirements.txt
    cp .env.example .env
@@ -51,7 +66,7 @@
    # 公网部署前：AUTH_ENABLED=true 与 AUTH_PASSWORD=你的密码
    ```
 
-2. **启动**
+2. **本地启动**
    ```bash
    ./run.sh
    ```
