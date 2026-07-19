@@ -1,60 +1,70 @@
 # Portfolio Agent（投资组合助手）
 
-基于 AI 的个人投资组合管理助手，支持工具调用、自主分析和跨市场持仓跟踪。
+[English](README.md)
 
-## 概览
+基于 AI 的个人投资组合管理助手：Streamlit 仪表盘、DeepSeek 思考模式 Agent、多市场数据、定时分析与 Telegram 通知。
 
-Portfolio Agent 用于跨市场跟踪个人持仓，并提供数据驱动的仓位管理建议。助手能够监控市场新闻、按需查询金融数据，并生成带有完整推理依据的投资建议。
+## 界面展示
+
+### 仪表盘
+
+总市值 / 盈亏、核心与卫星持仓、Ask Agent。
+
+![仪表盘](docs/screenshots/dashboard.png)
+
+### 建议
+
+带置信度、紧急度与完整推理的仓位建议，可接受或忽略。
+
+![建议](docs/screenshots/recommendations.png)
+
+### 任务
+
+盘后 / 新闻定时任务、立即运行、运行日志（默认北京时间）。
+
+![任务](docs/screenshots/jobs.png)
+
+### Telegram
+
+任务完成后推送分析结果。
+
+![Telegram 通知](docs/screenshots/telegram.png)
 
 ## 功能
 
-- **多市场持仓**：支持美股、A 股、港股、加密货币，以及核心—卫星仓位策略
-- **AI 分析**：通过 LangChain `ChatOpenAI` 使用 DeepSeek 的 OpenAI 兼容 API；由 LangGraph 驱动 ReAct 工具调用循环
-- **价格快照**：先显示本地缓存的价格，后台刷新实时行情；成本价会作为首次快照兜底
-- **定时分析**：4 个盘后任务和每小时新闻轮询；运行结果记录为完成、跳过或失败
-- **决策审计**：SQLite 保存会话、工具调用、建议和用户操作
-- **双语界面**：可从侧边栏切换中文或英文
+- **多市场持仓**：美股 / A 股 / 港股 / 加密货币，核心—卫星策略
+- **深度思考 Agent**：默认 `deepseek-v4-pro` + 思考模式（`reasoning_effort=max`）
+- **价格快照**：先显示缓存，再后台刷新实时行情
+- **定时分析**：盘后任务 + 每小时新闻（持仓相关 + 头条宏观）
+- **决策审计**：会话、工具调用、建议与操作落库 SQLite
+- **双语界面**：右上角 EN / CN 切换
+- **Telegram**：可选启动与分析通知
 
-## 覆盖市场
+## 使用方法
 
-- 🇺🇸 美股与 ETF
-- 🇨🇳 A 股
-- 🇭🇰 港股
-- 🪙 加密货币
+1. **安装与配置**
+   ```bash
+   pip install -r requirements.txt
+   cp .env.example .env
+   # 必填：DEEPSEEK_API_KEY
+   # 可选：TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、APP_TIMEZONE=Asia/Shanghai
+   ```
 
-## 投资策略
+2. **启动**
+   ```bash
+   ./run.sh
+   ```
+   浏览器打开 http://localhost:8501。
 
-采用核心—卫星（Core-Satellite）混合策略：
+3. **添加持仓** — 进入 **持仓**，按市场添加核心仓 / 卫星仓。
 
-- **核心仓**（长期）：关注宏观分析、行业趋势、基本面与长期走势
-- **卫星仓**（短期）：关注技术指标、资金流、市场情绪与事件催化
+4. **查看组合** — **仪表盘** 看总市值、盈亏与持仓表；用 **Ask Agent** 提问。
 
-## 技术栈
+5. **处理建议** — **建议** 页接受或忽略；完整记录在 **历史**。
 
-| 层级 | 技术 |
-|---|---|
-| UI | Streamlit |
-| Agent | LangGraph + DeepSeek |
-| 数据 | yfinance、akshare、pycoingecko、WallStreetCN |
-| 数据库 | SQLite（SQLAlchemy ORM） |
-| 调度 | APScheduler |
-| 通知 | Telegram Bot |
-| 语言 | Python 3.9+ |
+6. **运行分析** — **任务** 页可查看下次执行时间，或点 **立即运行**；结果在运行日志与会话详情中查看，配置 Telegram 后会推送到手机。
 
-## 项目结构
-
-```text
-portfolio-agent/
-├── app/            # Streamlit 仪表盘
-├── agent/          # AI Agent 引擎
-├── adapters/       # 市场数据适配器
-├── scheduler/      # 定时任务管理
-├── notifier/       # Telegram 通知
-├── db/             # 数据模型与查询
-└── docs/           # 设计文档
-```
-
-## 快速开始
+## 快速开始（简版）
 
 ```bash
 pip install -r requirements.txt
@@ -62,8 +72,6 @@ cp .env.example .env
 # 在 .env 中配置 DEEPSEEK_API_KEY
 ./run.sh
 ```
-
-应用默认运行在 http://localhost:8501。
 
 ## 验证
 
