@@ -2,6 +2,7 @@
 
 import streamlit as st
 from app.i18n import enum_label, t
+from app.timeutil import format_display_time
 from db.repository import get_session, get_recommendation_history
 
 st.title(t("history.title"))
@@ -35,6 +36,6 @@ else:
                         status=enum_label("rec_status", rec.status),
                     )
                 )
-                st.caption(rec.created_at.strftime("%Y-%m-%d %H:%M"))
+                st.caption(format_display_time(rec.created_at))
                 st.write(rec.reasoning)
             st.divider()

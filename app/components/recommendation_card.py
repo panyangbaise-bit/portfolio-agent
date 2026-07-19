@@ -1,5 +1,6 @@
 import streamlit as st
 from app.i18n import enum_label, t
+from app.timeutil import format_display_time
 from db.repository import get_session, get_pending_recommendations, record_user_action
 
 
@@ -35,7 +36,7 @@ def render_recommendations():
                         "rec.meta",
                         confidence=f"{rec.confidence:.0%}",
                         urgency=enum_label("urgency", rec.urgency),
-                        date=rec.created_at.strftime("%Y-%m-%d %H:%M"),
+                        date=format_display_time(rec.created_at),
                     )
                 )
                 st.write(rec.reasoning)

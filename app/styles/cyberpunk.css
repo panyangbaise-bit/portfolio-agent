@@ -191,3 +191,45 @@ textarea, [data-testid="stTextArea"] textarea,
 .stAlert {
   border-left: 3px solid var(--cp-cyan);
 }
+
+/* Hide Streamlit Deploy + ⋮ settings/menu (belt-and-suspenders with toolbarMode=minimal) */
+div[data-testid="stToolbar"],
+[data-testid="stAppDeployButton"],
+.stAppDeployButton,
+[data-testid="stMainMenu"],
+#MainMenu,
+header [data-testid="stDecoration"] {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+/* EN/CN toggle pinned to the top-right banner */
+button.pa-locale-toggle {
+  position: fixed !important;
+  top: 0.5rem !important;
+  right: 1rem !important;
+  left: auto !important;
+  height: 1.75rem;
+  min-width: 2.75rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--cp-cyan);
+  border-radius: 4px;
+  background: rgba(5, 5, 10, 0.92);
+  color: var(--cp-cyan);
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  z-index: 1000000 !important;
+}
+
+button.pa-locale-toggle:hover {
+  background: rgba(0, 240, 255, 0.18);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.55);
+}

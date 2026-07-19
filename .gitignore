@@ -25,6 +25,10 @@ venv/
 .env
 .env.local
 
+# Auth IP blacklist (runtime)
+data/ip_blacklist.json
+data/ip_blacklist.tmp
+
 # OS
 .DS_Store
 Thumbs.db

@@ -2,24 +2,28 @@
 
 Defines the ReAct-style agent loop:
   agent_node (LLM reasoning + tool selection)
-    → tool_node (execute tool)
+    → tools_node (execute tool + persist tool calls)
     → agent_node (continue reasoning with tool result)
     → END
 
 Uses DeepSeek API via ChatOpenAI (OpenAI-compatible interface).
 """
 
-from typing import Annotated
+from typing import Annotated, Any, Optional
+
 from typing_extensions import TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 
-from config import config
+from agent.llm import build_deepseek_llm
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tools import ALL_TOOLS
+from db.repository import get_session, log_tool_call
+
+# Extreme safety cap only — normal tool results are stored in full.
+_RESULT_MAX_CHARS = 100_000
 
 
 class AgentState(TypedDict):
@@ -29,18 +33,72 @@ class AgentState(TypedDict):
     extra_context: str
 
 
-def build_agent_graph() -> StateGraph:
-    """Build and compile the LangGraph agent graph with DeepSeek."""
+def _truncate_result(text: Any) -> Optional[str]:
+    """Keep full tool output; truncate only pathological oversized payloads."""
+    if text is None:
+        return None
+    s = text if isinstance(text, str) else str(text)
+    if len(s) <= _RESULT_MAX_CHARS:
+        return s
+    return s[:_RESULT_MAX_CHARS] + "…[truncated]"
 
-    llm = ChatOpenAI(
-        model=config.DEEPSEEK_MODEL,
-        api_key=config.DEEPSEEK_API_KEY,
-        base_url=config.DEEPSEEK_BASE_URL,
-        temperature=0.3,
-        max_tokens=4096,
+
+def _tool_call_parts(tc: Any):
+    """Normalize LangChain tool_call dict/object into name, args, id."""
+    if isinstance(tc, dict):
+        return tc.get("name", "unknown"), tc.get("args") or {}, tc.get("id")
+    return (
+        getattr(tc, "name", None) or "unknown",
+        getattr(tc, "args", None) or {},
+        getattr(tc, "id", None),
     )
 
+
+def _persist_tool_calls(state: AgentState, tool_messages: list) -> None:
+    """Write tool name/args/result for the latest AI tool_calls into DB."""
+    session_id = state.get("session_id")
+    if not session_id:
+        return
+
+    ai_msg = None
+    for msg in reversed(state.get("messages") or []):
+        if getattr(msg, "tool_calls", None):
+            ai_msg = msg
+            break
+    if ai_msg is None:
+        return
+
+    by_id = {}
+    for tm in tool_messages:
+        tid = getattr(tm, "tool_call_id", None)
+        if tid:
+            by_id[tid] = tm
+
+    db = get_session()
+    try:
+        for tc in ai_msg.tool_calls:
+            name, args, tc_id = _tool_call_parts(tc)
+            if not isinstance(args, dict):
+                args = {"value": args}
+            tm = by_id.get(tc_id) if tc_id else None
+            content = getattr(tm, "content", "") if tm else ""
+            log_tool_call(
+                db,
+                session_id,
+                name,
+                params=args,
+                result_summary=_truncate_result(content),
+            )
+    finally:
+        db.close()
+
+
+def build_agent_graph() -> StateGraph:
+    """Build and compile the LangGraph agent graph with DeepSeek thinking mode."""
+
+    llm = build_deepseek_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    base_tool_node = ToolNode(ALL_TOOLS)
 
     def agent_node(state: AgentState) -> dict:
         """Agent reasoning node. Calls the LLM with tools bound."""
@@ -58,7 +116,11 @@ def build_agent_graph() -> StateGraph:
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
-    tool_node = ToolNode(ALL_TOOLS)
+    def tools_node(state: AgentState) -> dict:
+        """Execute tools, then persist full call args/results for the Jobs detail view."""
+        result = base_tool_node.invoke(state)
+        _persist_tool_calls(state, result.get("messages") or [])
+        return result
 
     def should_continue(state: AgentState) -> str:
         """Decide whether to call tools or end."""
@@ -71,7 +133,7 @@ def build_agent_graph() -> StateGraph:
     workflow = StateGraph(AgentState)
 
     workflow.add_node("agent", agent_node)
-    workflow.add_node("tools", tool_node)
+    workflow.add_node("tools", tools_node)
 
     workflow.set_entry_point("agent")
 

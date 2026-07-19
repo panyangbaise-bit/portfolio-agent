@@ -103,7 +103,13 @@ def job_hourly_news_poll():
 
     try:
         news_items = poll_news_for_portfolio(tickers)
-        logger.info(f"Found {len(news_items)} news items for {len(tickers)} tickers")
+        headlines = sum(1 for n in news_items if n.get("category") == "headline")
+        ticker_news = len(news_items) - headlines
+        logger.info(
+            f"Found {len(news_items)} news items "
+            f"({ticker_news} ticker-related, {headlines} headlines) "
+            f"for {len(tickers)} tickers"
+        )
 
         if news_items:
             result = run_news_triggered_analysis(news_items)
@@ -114,7 +120,11 @@ def job_hourly_news_poll():
                 logger.info("No significant news impact detected.")
                 _finish_job_run(run_id, "skipped", "No significant news impact.")
         else:
-            _finish_job_run(run_id, "skipped", "No news found for current holdings.")
+            _finish_job_run(
+                run_id,
+                "skipped",
+                "No ticker news or headlines found.",
+            )
     except Exception as e:
         logger.error(f"News poll failed: {e}")
         _finish_job_run(run_id, "failed", str(e))

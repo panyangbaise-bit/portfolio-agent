@@ -1,4 +1,4 @@
-"""Main dashboard — KPI overview, holdings, recommendations, ask-agent."""
+"""Main dashboard — KPI overview, holdings snapshot, ask-agent."""
 
 import time
 
@@ -6,8 +6,6 @@ import streamlit as st
 from app.i18n import t
 from app.components.kpi_cards import render_kpi_cards
 from app.components.holdings_table import render_holdings_table
-from app.components.recommendation_card import render_recommendations
-from app.components.analysis_table import render_analysis_section
 from app.components.price_fetcher import (
     fetch_prices_batch,
     load_cached_prices,
@@ -20,7 +18,6 @@ from db.repository import get_all_holdings, get_session
 hdr_l, hdr_r = st.columns([5, 1])
 with hdr_l:
     st.title(t("dashboard.title"))
-    st.caption(t("dashboard.caption"))
 with hdr_r:
     st.write("")  # vertical align popover with title
     with st.popover(t("ask_agent.popover")):
@@ -70,7 +67,3 @@ def render_portfolio_snapshot():
 
 
 render_portfolio_snapshot()
-st.divider()
-render_analysis_section()
-st.divider()
-render_recommendations()

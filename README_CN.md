@@ -48,6 +48,7 @@
    cp .env.example .env
    # 必填：DEEPSEEK_API_KEY
    # 可选：TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、APP_TIMEZONE=Asia/Shanghai
+   # 公网部署前：AUTH_ENABLED=true 与 AUTH_PASSWORD=你的密码
    ```
 
 2. **启动**

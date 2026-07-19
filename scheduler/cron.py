@@ -119,8 +119,14 @@ def trigger_job(job_id: str) -> bool:
     _manual_runs[job_id] = {"status": "running", "started_at": None, "error": None}
 
     def _wrapper():
-        import datetime as _dt
-        _manual_runs[job_id]["started_at"] = _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        from datetime import datetime, timezone
+
+        from app.timeutil import format_display_time
+
+        _manual_runs[job_id]["started_at"] = format_display_time(
+            datetime.now(timezone.utc),
+            fmt="%Y-%m-%d %H:%M:%S",
+        )
         try:
             func()
             _manual_runs[job_id]["status"] = "completed"

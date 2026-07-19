@@ -11,10 +11,18 @@ class Config:
     # Database
     DATABASE_URL: str = f"sqlite:///{PROJECT_ROOT / 'portfolio.db'}"
 
-    # DeepSeek (OpenAI-compatible API)
+    # DeepSeek (OpenAI-compatible API) — deepseek-v4-pro + thinking mode by default
+    # Docs: https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
     DEEPSEEK_API_KEY: str = os.environ["DEEPSEEK_API_KEY"]
     DEEPSEEK_BASE_URL: str = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+    DEEPSEEK_MODEL: str = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-pro")
+    # Max output tokens (model allows up to 384K; 64K is a practical agent default).
+    DEEPSEEK_MAX_TOKENS: int = int(os.environ.get("DEEPSEEK_MAX_TOKENS", "65536"))
+    # Thinking intensity: high | max (agent workloads use max).
+    DEEPSEEK_REASONING_EFFORT: str = os.environ.get("DEEPSEEK_REASONING_EFFORT", "max")
+    DEEPSEEK_THINKING: bool = os.environ.get("DEEPSEEK_THINKING", "true").lower() in (
+        "1", "true", "yes", "on",
+    )
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -22,6 +30,17 @@ class Config:
 
     # Scheduler
     NEWS_POLL_INTERVAL_MINUTES: int = 60
+
+    # Display / logging timezone (DB timestamps stay UTC; UI converts for display).
+    # Default Beijing time. Override with e.g. APP_TIMEZONE=America/New_York
+    APP_TIMEZONE: str = os.environ.get("APP_TIMEZONE", "Asia/Shanghai")
+
+    # Public access gate (password never exposed to clients except typed form input)
+    AUTH_ENABLED: bool = os.environ.get("AUTH_ENABLED", "false").lower() in (
+        "1", "true", "yes", "on",
+    )
+    AUTH_PASSWORD: str = os.environ.get("AUTH_PASSWORD", "")
+    AUTH_MAX_FAILURES: int = int(os.environ.get("AUTH_MAX_FAILURES", "3"))
 
     # News API
     WALLSTREETCN_BASE_URL: str = "https://api-one-wscn.awtmt.com/apiv1"

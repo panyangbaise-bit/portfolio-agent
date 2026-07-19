@@ -75,8 +75,13 @@ High-priority analysis pushed to your chat when jobs finish.
 | `DEEPSEEK_REASONING_EFFORT` | No | `max` |
 | `DEEPSEEK_THINKING` | No | `true` |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` |
+| `AUTH_ENABLED` | No | `false` |
+| `AUTH_PASSWORD` | If auth on | — |
+| `AUTH_MAX_FAILURES` | No | `3` |
 | `TELEGRAM_BOT_TOKEN` | No | notifications disabled |
 | `TELEGRAM_CHAT_ID` | No | notifications disabled |
+
+Before public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. After 3 failed attempts the client IP is blacklisted in `data/ip_blacklist.json`.
 
 ## Tech Stack
 

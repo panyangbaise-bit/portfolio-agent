@@ -194,14 +194,16 @@ def end_agent_session(session: Session, session_id: int, summary: str = None):
         session.commit()
 
 
-def list_analysis_runs(session: Session, limit: int = 50) -> list[dict]:
-    """Return agent sessions with recommendation aggregates for the dashboard table."""
-    runs = (
-        session.query(AgentSession)
-        .order_by(desc(AgentSession.started_at))
-        .limit(limit)
-        .all()
-    )
+def list_analysis_runs(
+    session: Session,
+    limit: int = 50,
+    job_id: Optional[str] = None,
+) -> list[dict]:
+    """Return agent sessions with recommendation aggregates for the Jobs detail list."""
+    query = session.query(AgentSession).order_by(desc(AgentSession.started_at))
+    if job_id:
+        query = query.filter(AgentSession.job_id == job_id)
+    runs = query.limit(limit).all()
     rows = []
     for s in runs:
         recs = s.recommendations or []
@@ -230,8 +232,59 @@ def list_analysis_runs(session: Session, limit: int = 50) -> list[dict]:
             "actions": ", ".join(actions) if actions else "—",
             "max_confidence": max_conf,
             "summary": summary if summary else "—",
+            "tool_count": len(s.tool_calls or []),
         })
     return rows
+
+
+def get_agent_session_detail(session: Session, session_id: int) -> Optional[dict]:
+    """Return one agent session with full summary, recommendations, and tool calls."""
+    s = session.query(AgentSession).filter(AgentSession.id == session_id).first()
+    if not s:
+        return None
+
+    recommendations = sorted(
+        s.recommendations or [],
+        key=lambda r: r.created_at or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    tool_calls = sorted(
+        s.tool_calls or [],
+        key=lambda c: c.called_at or datetime.min.replace(tzinfo=timezone.utc),
+    )
+
+    return {
+        "id": s.id,
+        "started_at": s.started_at,
+        "ended_at": s.ended_at,
+        "job_id": s.job_id,
+        "market": s.market,
+        "triggered_by": s.triggered_by,
+        "status": s.status,
+        "summary": s.summary,
+        "recommendations": [
+            {
+                "id": r.id,
+                "ticker": r.ticker,
+                "action": r.action,
+                "reasoning": r.reasoning,
+                "confidence": r.confidence,
+                "urgency": r.urgency,
+                "status": r.status,
+                "created_at": r.created_at,
+            }
+            for r in recommendations
+        ],
+        "tool_calls": [
+            {
+                "id": c.id,
+                "tool_name": c.tool_name,
+                "params": c.params,
+                "result_summary": c.result_summary,
+                "called_at": c.called_at,
+            }
+            for c in tool_calls
+        ],
+    }
 
 
 def create_job_run(session: Session, job_id: str, job_name: str) -> JobRun:

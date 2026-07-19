@@ -26,7 +26,14 @@ Copy `.env.example` to `.env`:
 |---|---|---|
 | `DEEPSEEK_API_KEY` | **Yes** | — |
 | `DEEPSEEK_BASE_URL` | No | `https://api.deepseek.com/v1` |
-| `DEEPSEEK_MODEL` | No | `deepseek-chat` |
+| `DEEPSEEK_MODEL` | No | `deepseek-v4-pro` |
+| `DEEPSEEK_MAX_TOKENS` | No | `65536` |
+| `DEEPSEEK_REASONING_EFFORT` | No | `max` (`high` / `max`) |
+| `DEEPSEEK_THINKING` | No | `true` (thinking mode) |
+| `APP_TIMEZONE` | No | `Asia/Shanghai` (Beijing; UI display) |
+| `AUTH_ENABLED` | No | `false` (set `true` before public deploy) |
+| `AUTH_PASSWORD` | If auth on | — (server-side only) |
+| `AUTH_MAX_FAILURES` | No | `3` then IP blacklisted |
 | `TELEGRAM_BOT_TOKEN` | No | — (notifications disabled) |
 | `TELEGRAM_CHAT_ID` | No | — |
 
@@ -36,19 +43,23 @@ Copy `.env.example` to `.env`:
 adapters/     Market data adapters (MarketAdapter ABC → yfinance/akshare/CoinGecko/WallStreetCN)
 agent/        LangGraph ReAct loop, system prompt, LangChain tools, session tracking
 app/          Streamlit dashboard (main.py + components/ + views/)
-app/i18n.py   English / Chinese UI strings, selected through sidebar locale control
-app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme()
-app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs)
+app/i18n.py   English / Chinese UI strings, selected through top-banner EN/CN toggle
+app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_toggle()
+app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Recommendations → Jobs → History
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
 scheduler/    APScheduler — 4 after-market jobs + hourly news poll
 notifier/     Telegram Bot
 config.py     Central config from env vars
-tests/        pytest coverage for theme, i18n, price fallback, and job-run persistence
+tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, and agent session detail
 ```
 
 **Agent flow:** Market adapter → LangChain tool → LangGraph agent → recommendation/session → SQLite → Dashboard.
 
-**Key design:** `agent/graph.py` binds `agent.tools.ALL_TOOLS` to `langchain_openai.ChatOpenAI`, configured with `DEEPSEEK_BASE_URL` and `DEEPSEEK_MODEL`. All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
+**Key design:** `agent/graph.py` binds `agent.tools.ALL_TOOLS` to `agent.llm.DeepSeekChatOpenAI` (DeepSeek `deepseek-v4-pro` with thinking mode + `reasoning_effort=max`). The wrapper preserves `reasoning_content` across tool-call rounds (required by DeepSeek thinking mode). All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
+
+### DeepSeek thinking mode
+
+Thinking is enabled via `extra_body={"thinking": {"type": "enabled"}}` and `reasoning_effort` ([docs](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode)). Temperature is ignored in thinking mode. Tool rounds must echo `reasoning_content` — handled in `agent/llm.py`.
 
 ## Gotchas
 
@@ -81,7 +92,7 @@ Crypto adapter sets `cg.session.timeout = 10`. The dashboard-wide concurrent fet
 
 ### Agent sessions store job metadata
 
-`agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). Dashboard **Job Analysis History** reads these via `list_analysis_runs()`. Older rows may have null `job_id`/`market` until new runs complete.
+`agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). **Jobs** page shows **Job Runtime Log** via `list_job_runs()`, plus **Agent Session Detail** (summary, recommendation `reasoning`, tool-call timeline) via `list_analysis_runs()` / `get_agent_session_detail()`. Tool calls are persisted by the logging `tools` node in `agent/graph.py` into `agent_tool_calls` (full params/results, 100k-char safety cap). Older `agent_sessions` rows may have null `job_id`/`market` or empty tool logs until new runs complete.
 
 ### Scheduler outcomes are persisted
 
@@ -89,7 +100,7 @@ Crypto adapter sets `cg.session.timeout = 10`. The dashboard-wide concurrent fet
 
 ### Localization
 
-Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh`; agent-generated reasoning and user-entered names are not translated.
+Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh` (toggled by the top-banner EN/CN button); agent-generated reasoning and user-entered names are not translated. Sidebar nav keys are stable (`dashboard`/`holdings`/`recommendations`/`jobs`/`history`) so switching language does not reset the current page.
 
 ### Ask Agent is a popover
 
@@ -105,11 +116,35 @@ Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.ht
 
 ### Manual job triggers
 
-Dashboard **Scheduled Jobs** table has "▶ Run Now" buttons that call `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result.
+**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, recommendation reasoning, and tool calls.
+
+### Localization toggle
+
+Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). Clicking sets `?locale=en|zh` and reloads; `app/main.py` syncs that into `st.session_state["locale"]`.
+
+### Hide Streamlit Deploy / settings menu
+
+[`.streamlit/config.toml`](.streamlit/config.toml) sets `client.toolbarMode = "minimal"`. Theme CSS also force-hides Deploy and the ⋮ main menu so they stay gone on localhost. Restart Streamlit after changing `config.toml`.
+
+### Display timezone
+
+DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` using `APP_TIMEZONE` (default `Asia/Shanghai` / Beijing). This fixes the apparent −8h offset when viewing job run times in China.
+
+### Hourly news poll
+
+`hourly_news` fetches **ticker news + WallStreetCN headlines/latest**, then asks the agent to assess both holding-specific and macro/headline impact on the portfolio (`poll_news_for_portfolio` in `agent/core.py`).
 
 ### Telegram chat ID discovery
 
 `notifier/telegram.py` has `discover_chat_id()` which calls `getUpdates` to find the most recent chat ID. This requires Telegram API to be reachable (blocked from mainland China without a proxy). Fallback: set `TELEGRAM_CHAT_ID` manually in `.env`.
+
+### Telegram welcome is process-once
+
+`send_welcome()` must NOT key off `st.session_state` — Streamlit page refresh clears session state and would spam Telegram. Bootstrap uses a process-level lock in `app/main.py` plus `_welcome_sent` in `notifier/telegram.py`, so the “已启动” message fires only when the server process first starts.
+
+### Public password gate
+
+Before exposing the app on the public internet, set `AUTH_ENABLED=true` and `AUTH_PASSWORD=...` in `.env`. `app.auth.require_auth()` runs in `app/main.py` before any page UI. Wrong password increments a per-IP counter; at `AUTH_MAX_FAILURES` (default 3) the IP is written to `data/ip_blacklist.json` (gitignored) and blocked immediately. Unban by removing the IP from that file and restarting if needed.
 
 ## Maintenance Rule
 

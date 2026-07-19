@@ -2,15 +2,21 @@
 
 import logging
 import re
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 from typing import Optional
 
 from config import config
+from app.timeutil import format_display_time
 
 logger = logging.getLogger(__name__)
 
 # Telegram imposes a 4096-character limit per message.
 MAX_MESSAGE_LENGTH = 4000
+
+# Process-lifetime guard — Streamlit refreshes reset session_state but not this.
+_welcome_sent = False
+_welcome_lock = threading.Lock()
 
 
 def _is_configured() -> bool:
@@ -129,8 +135,16 @@ def notify(message: str):
 
 
 def send_welcome():
-    """Send a startup notification."""
-    notify(f"🤖 <b>Portfolio Agent 已启动</b>\n<code>{datetime.now().strftime('%Y-%m-%d %H:%M')}</code>")
+    """Send a one-time process startup notification (not on page refresh)."""
+    global _welcome_sent
+    with _welcome_lock:
+        if _welcome_sent:
+            logger.info("Skipping Telegram welcome — already sent this process.")
+            return
+        _welcome_sent = True
+
+    now = format_display_time(datetime.now(timezone.utc))
+    notify(f"🤖 <b>Portfolio Agent 已启动</b>\n<code>{now}</code>")
 
 
 def send_urgent_recommendation(ticker: str, action: str, reasoning: str, confidence: float):

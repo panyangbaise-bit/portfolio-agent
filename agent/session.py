@@ -63,11 +63,16 @@ class AgentSessionManager:
         if not news_items:
             return "无最新相关新闻。"
         lines = []
-        for item in news_items[:10]:
+        for item in news_items[:20]:
             title = item.get("title", "")
             summary = item.get("summary", "")
             ts = item.get("published_at", "")
-            lines.append(f"- [{ts}] {title}")
+            category = item.get("category") or "news"
+            ticker = item.get("related_ticker")
+            tag = category
+            if ticker:
+                tag = f"{category}:{ticker}"
+            lines.append(f"- [{tag}] [{ts}] {title}")
             if summary:
                 lines.append(f"  摘要: {summary}")
         return "\n".join(lines)

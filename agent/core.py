@@ -57,8 +57,8 @@ def run_after_market_analysis(market: str) -> str:
 def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
     """Run analysis triggered by hourly news polling.
 
-    Only activates if news items appear relevant to holdings.
-    Returns analysis text or None if no action needed.
+    Analyzes both ticker-related news and market headlines for portfolio impact.
+    Returns analysis text or None if no news items were provided.
     """
     if not news_items:
         return None
@@ -67,13 +67,18 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         triggered_by="event",
         job_id="hourly_news",
         market=None,
-        news_snapshot={"count": len(news_items), "sample": news_items[:5]},
+        news_snapshot={"count": len(news_items), "sample": news_items[:8]},
     )
     session.start()
 
     summary = session.snapshot_news_for_context(news_items)
     context = NEWS_TRIGGER_PROMPT_EXTRA.format(news_summary=summary)
-    message = HumanMessage(content="请查看最新新闻，判断是否有需要关注的持仓标的，并给出分析。")
+    message = HumanMessage(
+        content=(
+            "请查看最新新闻：既要分析持仓相关新闻，也要评估头条/宏观要闻对组合的影响，"
+            "并给出有依据的建议。"
+        )
+    )
 
     result = agent_graph.invoke({
         "messages": [message],
@@ -116,22 +121,35 @@ def run_ad_hoc_query(question: str) -> str:
 
 
 def poll_news_for_portfolio(tickers: list[str]) -> list[dict]:
-    """Hourly news poll: search for each ticker, return all matching articles.
+    """Hourly news poll: ticker news + market headlines / latest wire.
 
     Args:
         tickers: List of ticker symbols from the portfolio
 
     Returns:
-        Combined list of news articles found
+        Combined list of news articles (category: ticker | headline)
     """
     all_news = []
     seen = set()
+
+    def _add(article: dict, category: str, related_ticker: Optional[str] = None) -> None:
+        key = article.get("title", "")
+        if not key or key in seen:
+            return
+        seen.add(key)
+        item = dict(article)
+        item["category"] = category
+        if related_ticker:
+            item["related_ticker"] = related_ticker
+        all_news.append(item)
+
+    for article in news_adapter.get_headlines(10):
+        _add(article, "headline")
+    for article in news_adapter.get_latest_news(10):
+        _add(article, "headline")
+
     for ticker in tickers:
-        articles = news_adapter.search_ticker_news(ticker, days=1)
-        for a in articles:
-            key = a.get("title", "")
-            if key and key not in seen:
-                seen.add(key)
-                a["related_ticker"] = ticker
-                all_news.append(a)
+        for article in news_adapter.search_ticker_news(ticker, days=1):
+            _add(article, "ticker", related_ticker=ticker)
+
     return all_news
