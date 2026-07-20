@@ -49,6 +49,10 @@ MIGRATIONS = [
         "v3b_job_runs_index",
         "CREATE INDEX IF NOT EXISTS ix_job_runs_job_started ON job_runs (job_id, started_at)",
     ),
+    (
+        "v4_holdings_status",
+        "ALTER TABLE holdings ADD COLUMN status VARCHAR(20) DEFAULT 'open'",
+    ),
 ]
 
 

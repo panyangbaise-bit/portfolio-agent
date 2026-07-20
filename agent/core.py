@@ -1,6 +1,5 @@
 """Agent core orchestrator — ties together session, graph, and tools."""
 
-from datetime import datetime
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
@@ -10,8 +9,10 @@ from agent.session import AgentSessionManager
 from agent.system_prompt import (
     AFTER_MARKET_PROMPT_EXTRA,
     NEWS_TRIGGER_PROMPT_EXTRA,
+    TRADE_REVIEW_PROMPT_EXTRA,
 )
 from adapters.news import news_adapter
+from db.repository import get_recent_transactions, get_session as get_db_session
 
 
 _MARKET_JOB_IDS = {
@@ -84,6 +85,54 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         "messages": [message],
         "session_id": session.session_id,
         "triggered_by": "event",
+        "extra_context": context,
+    })
+
+    last_msg = result["messages"][-1]
+    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    session.finish(summary=text)
+    return text
+
+
+def run_trade_review_analysis(days: int = 31) -> Optional[str]:
+    """Review recent buy/sell operations. Returns None if there are no trades."""
+    db = get_db_session()
+    try:
+        txns = get_recent_transactions(db, days=days)
+        if not txns:
+            return None
+        lines = []
+        for txn in txns:
+            holding = txn.holding
+            ticker = holding.ticker if holding else "?"
+            ts = txn.date.strftime("%Y-%m-%d") if txn.date else "—"
+            note = f" | {txn.notes}" if txn.notes else ""
+            lines.append(
+                f"- [{ts}] {ticker} {txn.action} {txn.shares} @ {txn.price}{note}"
+            )
+        trade_summary = "\n".join(lines)
+    finally:
+        db.close()
+
+    session = AgentSessionManager(
+        triggered_by="schedule",
+        job_id="monthly_trade_review",
+        market=None,
+    )
+    session.start()
+
+    context = TRADE_REVIEW_PROMPT_EXTRA.format(
+        days=days,
+        trade_summary=trade_summary,
+    )
+    message = HumanMessage(
+        content="请复盘近期投资操作日志，评估买卖时机与仓位纪律，必要时给出调整建议。"
+    )
+
+    result = agent_graph.invoke({
+        "messages": [message],
+        "session_id": session.session_id,
+        "triggered_by": "schedule",
         "extra_context": context,
     })
 

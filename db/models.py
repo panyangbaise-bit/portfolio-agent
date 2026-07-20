@@ -25,6 +25,7 @@ class Holding(Base):
     shares: Mapped[float] = mapped_column(Float, nullable=False)
     cost_basis: Mapped[float] = mapped_column(Float, nullable=False)
     position_type: Mapped[str] = mapped_column(String(20), nullable=False, default="core")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

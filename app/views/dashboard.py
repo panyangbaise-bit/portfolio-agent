@@ -13,7 +13,7 @@ from app.components.price_fetcher import (
     persist_cost_basis_fallbacks,
     save_live_prices,
 )
-from db.repository import get_all_holdings, get_session
+from db.repository import get_open_holdings, get_session
 
 hdr_l, hdr_r = st.columns([5, 1])
 with hdr_l:
@@ -42,7 +42,7 @@ def render_portfolio_snapshot():
     """Render cached values first, then refresh live prices on later ticks."""
     session = get_session()
     try:
-        holdings = get_all_holdings(session)
+        holdings = get_open_holdings(session)
     finally:
         session.close()
 

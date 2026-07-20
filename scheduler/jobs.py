@@ -5,12 +5,13 @@ import logging
 from db.repository import (
     create_job_run,
     finish_job_run,
-    get_all_holdings,
+    get_open_holdings,
     get_session,
 )
 from agent.core import (
     run_after_market_analysis,
     run_news_triggered_analysis,
+    run_trade_review_analysis,
     poll_news_for_portfolio,
 )
 from notifier.telegram import notify
@@ -91,7 +92,7 @@ def job_hourly_news_poll():
     logger.info("Running hourly news poll...")
     session = get_session()
     try:
-        holdings = get_all_holdings(session)
+        holdings = get_open_holdings(session)
         tickers = [h.ticker for h in holdings]
     finally:
         session.close()
@@ -127,4 +128,21 @@ def job_hourly_news_poll():
             )
     except Exception as e:
         logger.error(f"News poll failed: {e}")
+        _finish_job_run(run_id, "failed", str(e))
+
+
+def job_monthly_trade_review():
+    run_id = _start_job_run("monthly_trade_review", "月度交易复盘")
+    logger.info("Starting monthly trade review...")
+    try:
+        result = run_trade_review_analysis(days=31)
+        if result:
+            logger.info(f"Trade review done: {result[:100]}...")
+            notify(f"📒 月度交易复盘\n\n{result}")
+            _finish_job_run(run_id, "completed", result[:500])
+        else:
+            logger.info("No recent trades; skipping trade review.")
+            _finish_job_run(run_id, "skipped", "No trades in the review window.")
+    except Exception as e:
+        logger.error(f"Trade review failed: {e}")
         _finish_job_run(run_id, "failed", str(e))

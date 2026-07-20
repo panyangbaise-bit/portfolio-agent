@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from app.i18n import t
-from db.repository import get_session, get_all_holdings
+from db.repository import get_session, get_open_holdings
 from app.components.price_fetcher import fetch_prices_batch, resolve_display_price
 
 
@@ -35,7 +35,7 @@ def render_holdings_table(holdings=None, prices=None):
     if holdings is None:
         session = get_session()
         try:
-            holdings = get_all_holdings(session)
+            holdings = get_open_holdings(session)
         finally:
             session.close()
 

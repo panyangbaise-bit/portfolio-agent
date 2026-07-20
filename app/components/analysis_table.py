@@ -20,7 +20,14 @@ from scheduler.cron import (
     trigger_job,
 )
 
-JOB_IDS = ("us_after_market", "cn_after_market", "hk_after_market", "crypto_daily", "hourly_news")
+JOB_IDS = (
+    "us_after_market",
+    "cn_after_market",
+    "hk_after_market",
+    "crypto_daily",
+    "hourly_news",
+    "monthly_trade_review",
+)
 
 # Job | ID | Next Run | Run Now
 _SCHEDULE_COLS = [3, 2, 3, 1.5]

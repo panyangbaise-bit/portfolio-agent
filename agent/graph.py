@@ -20,6 +20,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from agent.llm import build_deepseek_llm
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tools import ALL_TOOLS
+from app.timeutil import format_now_for_agent
 from db.repository import get_session, log_tool_call
 
 # Extreme safety cap only — normal tool results are stored in full.
@@ -111,6 +112,7 @@ def build_agent_graph() -> StateGraph:
             extra = state.get("extra_context", "")
             if extra:
                 prompt = prompt + "\n\n" + extra
+            prompt = prompt + "\n\n" + format_now_for_agent()
             messages = [SystemMessage(content=prompt)] + list(messages)
 
         response = llm_with_tools.invoke(messages)

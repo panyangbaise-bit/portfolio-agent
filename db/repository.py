@@ -30,7 +30,7 @@ def create_holding(session: Session, ticker: str, market: str, shares: float,
     holding = Holding(
         ticker=ticker.upper(), market=market.upper(), shares=shares,
         cost_basis=cost_basis, position_type=position_type,
-        name=name,
+        name=name, status="open",
     )
     session.add(holding)
     session.commit()
@@ -39,6 +39,11 @@ def create_holding(session: Session, ticker: str, market: str, shares: float,
 
 def get_all_holdings(session: Session) -> list[Holding]:
     return session.query(Holding).all()
+
+
+def get_open_holdings(session: Session) -> list[Holding]:
+    """Active positions only (excludes closed / zero-share rows)."""
+    return session.query(Holding).filter(Holding.status == "open").all()
 
 
 def get_holding_by_ticker(session: Session, ticker: str) -> Optional[Holding]:
@@ -67,11 +72,14 @@ def delete_holding(session: Session, holding_id: int) -> bool:
 # ── Transactions ──────────────────────────────────────────
 
 def create_transaction(session: Session, holding_id: int, action: str,
-                       shares: float, price: float, notes: str = None) -> Transaction:
+                       shares: float, price: float, notes: str = None,
+                       date: datetime = None) -> Transaction:
     txn = Transaction(
         holding_id=holding_id, action=action, shares=shares,
         price=price, notes=notes,
     )
+    if date is not None:
+        txn.date = date
     session.add(txn)
     session.commit()
     return txn
@@ -81,6 +89,95 @@ def get_transactions_for_holding(session: Session, holding_id: int) -> list[Tran
     return session.query(Transaction).filter(
         Transaction.holding_id == holding_id
     ).order_by(desc(Transaction.date)).all()
+
+
+def get_recent_transactions(session: Session, days: int = 30) -> list[Transaction]:
+    """Transactions from the last N days, newest first (holding eagerly usable)."""
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return (
+        session.query(Transaction)
+        .filter(Transaction.date >= cutoff)
+        .order_by(desc(Transaction.date))
+        .all()
+    )
+
+
+def apply_trade(
+    session: Session,
+    holding_id: int,
+    action: str,
+    shares: float,
+    price: float,
+    notes: str = None,
+    trade_date: datetime = None,
+) -> Transaction:
+    """Apply a buy/sell using broker-style average cost.
+
+    Buy: new_cost = (old_shares * old_cost + shares * price) / new_shares;
+    reopen closed positions.
+    Sell: remaining_cost = (old_shares * old_cost - shares * price) / remaining;
+    (matches common CN/HK broker 成本价; selling at a loss raises remaining cost).
+    Full exit → shares=0, status=closed.
+    """
+    action = (action or "").lower().strip()
+    if action not in ("buy", "sell"):
+        raise ValueError(f"Invalid action: {action}")
+    if shares is None or shares <= 0:
+        raise ValueError("Shares must be positive")
+    if price is None or price <= 0:
+        raise ValueError("Price must be positive")
+
+    holding = session.query(Holding).filter(Holding.id == holding_id).first()
+    if not holding:
+        raise ValueError(f"Holding not found: {holding_id}")
+
+    if action == "buy":
+        old_shares = float(holding.shares or 0)
+        if holding.status == "closed" or old_shares <= 0:
+            old_shares = 0.0
+        old_cost = float(holding.cost_basis or 0)
+        new_shares = old_shares + shares
+        if old_shares <= 0:
+            new_cost = price
+        else:
+            new_cost = (old_shares * old_cost + shares * price) / new_shares
+        holding.shares = new_shares
+        holding.cost_basis = new_cost
+        holding.status = "open"
+    else:
+        old_shares = float(holding.shares or 0)
+        old_cost = float(holding.cost_basis or 0)
+        if shares > old_shares + 1e-12:
+            raise ValueError(
+                f"Cannot sell {shares} shares; only {old_shares} available"
+            )
+        remaining = old_shares - shares
+        if remaining < 1e-12:
+            remaining = 0.0
+            holding.shares = 0.0
+            holding.status = "closed"
+        else:
+            # Broker-style: subtract sale proceeds from total cost, then re-average.
+            remaining_total = old_shares * old_cost - shares * price
+            holding.shares = remaining
+            holding.cost_basis = remaining_total / remaining
+
+    holding.updated_at = datetime.now(timezone.utc)
+
+    txn = Transaction(
+        holding_id=holding.id,
+        action=action,
+        shares=shares,
+        price=price,
+        notes=notes,
+    )
+    if trade_date is not None:
+        txn.date = trade_date
+    session.add(txn)
+    session.commit()
+    return txn
 
 
 # ── Price Cache ───────────────────────────────────────────

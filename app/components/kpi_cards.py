@@ -1,6 +1,6 @@
 import streamlit as st
 from app.i18n import t
-from db.repository import get_session, get_all_holdings, get_pending_recommendations
+from db.repository import get_session, get_open_holdings, get_pending_recommendations
 from app.components.price_fetcher import fetch_prices_batch
 
 
@@ -9,7 +9,7 @@ def render_kpi_cards(holdings=None, prices=None):
     session = get_session()
     try:
         if holdings is None:
-            holdings = get_all_holdings(session)
+            holdings = get_open_holdings(session)
         pending = get_pending_recommendations(session)
     finally:
         session.close()

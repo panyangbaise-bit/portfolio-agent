@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import Optional
 import akshare as ak
+import pandas as pd
 
 from adapters.base import MarketAdapter
+from adapters.cn_index_map import resolve_csi_index_code
 
 
 class CNMarketAdapter(MarketAdapter):
@@ -109,11 +111,183 @@ class CNMarketAdapter(MarketAdapter):
 
     def get_financials(self, ticker: str) -> dict:
         if self._is_fund(ticker) and not self._ticker_looks_like_stock(ticker):
-            return {"ticker": ticker, "note": "基金产品，无财报数据。关注净值走势和基金持仓。"}
+            return {
+                "ticker": ticker,
+                "note": (
+                    "基金产品，无上市公司财报。"
+                    "请改用 get_fund_info 获取跟踪指数、费率与成分股。"
+                ),
+            }
         try:
             return self._get_stock_financials(ticker)
         except Exception:
             return {"ticker": ticker, "note": "no financial data available"}
+
+    def get_fund_info(self, ticker: str, top_constituents: int = 20) -> dict:
+        """Fund/ETF overview: tracked index, fees, allocation, index constituents."""
+        code = (ticker or "").strip()
+        if not code:
+            return {"ticker": ticker, "error": "empty ticker"}
+
+        overview = self._fetch_fund_overview(code)
+        if overview.get("error") and not overview.get("name"):
+            return overview
+
+        name = overview.get("name") or ""
+        tracked = overview.get("tracked_index") or ""
+        fund_kind = self._classify_fund_kind(name, overview.get("fund_type"))
+        index_code = resolve_csi_index_code(tracked)
+
+        fees = self._fetch_fund_fees(code)
+        allocation = self._fetch_asset_allocation(code)
+        constituents, cons_source = self._fetch_index_constituents(
+            index_code, top_constituents,
+        )
+
+        notes = []
+        if fund_kind == "etf_feeder":
+            notes.append(
+                "联接基金：资产以目标 ETF 为主；成分股为跟踪指数近似，非季报逐股权重。"
+            )
+        if tracked and not index_code:
+            notes.append(f"未能解析跟踪指数代码，仅返回名称：{tracked}")
+        elif index_code and not constituents:
+            notes.append(f"已解析指数代码 {index_code}，但成分股拉取失败或为空。")
+
+        return {
+            "ticker": code,
+            "fund_kind": fund_kind,
+            "name": overview.get("name"),
+            "full_name": overview.get("full_name"),
+            "fund_type": overview.get("fund_type"),
+            "company": overview.get("company"),
+            "custodian": overview.get("custodian"),
+            "manager": overview.get("manager"),
+            "inception": overview.get("inception"),
+            "nav_scale": overview.get("nav_scale"),
+            "share_scale": overview.get("share_scale"),
+            "benchmark": overview.get("benchmark"),
+            "tracked_index": tracked or None,
+            "tracked_index_code": index_code,
+            "fees": fees,
+            "asset_allocation": allocation,
+            "constituents": constituents,
+            "constituents_source": cons_source,
+            "constituents_count": len(constituents),
+            "notes": notes,
+        }
+
+    def _fetch_fund_overview(self, code: str) -> dict:
+        try:
+            df = ak.fund_overview_em(symbol=code)
+        except Exception as e:
+            return {"ticker": code, "error": f"fund_overview_em failed: {e}"}
+        if df is None or df.empty:
+            return {"ticker": code, "error": "fund overview not found"}
+
+        row = df.iloc[0]
+
+        def _cell(*keys):
+            for k in keys:
+                if k in row.index and pd.notna(row[k]) and str(row[k]).strip():
+                    return str(row[k]).strip()
+            return None
+
+        code_raw = _cell("基金代码") or code
+        code_clean = code_raw.split("（")[0].split("(")[0].strip()
+        return {
+            "ticker": code_clean,
+            "name": _cell("基金简称"),
+            "full_name": _cell("基金全称"),
+            "fund_type": _cell("基金类型"),
+            "company": _cell("基金管理人"),
+            "custodian": _cell("基金托管人"),
+            "manager": _cell("基金经理人", "基金经理"),
+            "inception": _cell("成立日期/规模", "成立日期"),
+            "nav_scale": _cell("净资产规模"),
+            "share_scale": _cell("份额规模"),
+            "benchmark": _cell("业绩比较基准"),
+            "tracked_index": _cell("跟踪标的"),
+        }
+
+    def _fetch_fund_fees(self, code: str) -> dict:
+        fees = {}
+        try:
+            df = ak.fund_individual_detail_info_xq(symbol=code)
+        except Exception:
+            return fees
+        if df is None or df.empty:
+            return fees
+        for _, row in df.iterrows():
+            fee_type = str(row.get("费用类型", "") or "")
+            name = str(row.get("条件或名称", "") or "")
+            value = row.get("费用")
+            key = name or fee_type
+            if key:
+                fees[key] = value
+        return fees
+
+    def _fetch_asset_allocation(self, code: str) -> list[dict]:
+        now = datetime.now()
+        today = now.strftime("%Y%m%d")
+        dates = []
+        for year in (now.year, now.year - 1):
+            for md in ("1231", "0930", "0630", "0331"):
+                d = f"{year}{md}"
+                if d <= today:
+                    dates.append(d)
+        for date in dates:
+            try:
+                df = ak.fund_individual_detail_hold_xq(symbol=code, date=date)
+            except Exception:
+                continue
+            if df is None or df.empty:
+                continue
+            if "资产类型" not in df.columns or "仓位占比" not in df.columns:
+                continue
+            rows = []
+            for _, row in df.iterrows():
+                rows.append({
+                    "asset_type": str(row.get("资产类型")),
+                    "weight_pct": self._safe_float(row.get("仓位占比")),
+                    "as_of": date,
+                })
+            if rows:
+                return rows
+        return []
+
+    def _fetch_index_constituents(self, index_code: Optional[str], top_n: int):
+        if not index_code:
+            return [], None
+        try:
+            df = ak.index_stock_cons_csindex(symbol=index_code)
+        except Exception:
+            return [], "tracked_index_error"
+        if df is None or df.empty:
+            return [], "tracked_index"
+        code_col = "成分券代码" if "成分券代码" in df.columns else None
+        name_col = "成分券名称" if "成分券名称" in df.columns else None
+        if not code_col:
+            return [], "tracked_index"
+        limit = top_n if top_n and top_n > 0 else 20
+        out = []
+        for _, row in df.head(limit).iterrows():
+            out.append({
+                "code": str(row[code_col]),
+                "name": str(row[name_col]) if name_col else None,
+            })
+        return out, "tracked_index"
+
+    @staticmethod
+    def _classify_fund_kind(name: Optional[str], fund_type: Optional[str]) -> str:
+        text = f"{name or ''} {fund_type or ''}"
+        if "联接" in text:
+            return "etf_feeder"
+        if "ETF" in text.upper():
+            return "etf"
+        if "指数" in text:
+            return "index_fund"
+        return "fund"
 
     @staticmethod
     def _ticker_looks_like_stock(ticker: str) -> bool:

@@ -14,7 +14,7 @@ pip install -r requirements.txt
 # Test
 PYTHONPATH=. python3 -m pytest tests -v
 
-# Manual job trigger test (triggers all 5 scheduled jobs via threading)
+# Manual job trigger test (triggers all 6 scheduled jobs via threading)
 PYTHONPATH=. python3 tests/test_manual_trigger_all_jobs.py
 
 # One-shot deploy on Ubuntu (venv + systemd)
@@ -51,15 +51,15 @@ app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_tog
 app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Recommendations → Jobs → History
 deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
-scheduler/    APScheduler — 4 after-market jobs + hourly news poll
+scheduler/    APScheduler — 4 after-market jobs + hourly news poll + monthly trade review
 notifier/     Telegram Bot
 config.py     Central config from env vars
-tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, and agent session detail
+tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, and agent session detail
 ```
 
 **Agent flow:** Market adapter → LangChain tool → LangGraph agent → recommendation/session → SQLite → Dashboard.
 
-**Key design:** `agent/graph.py` binds `agent.tools.ALL_TOOLS` to `agent.llm.DeepSeekChatOpenAI` (DeepSeek `deepseek-v4-pro` with thinking mode + `reasoning_effort=max`). The wrapper preserves `reasoning_content` across tool-call rounds (required by DeepSeek thinking mode). All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
+**Key design:** `agent/graph.py` binds `agent.tools.ALL_TOOLS` to `agent.llm.DeepSeekChatOpenAI` (DeepSeek `deepseek-v4-pro` with thinking mode + `reasoning_effort=max`). The wrapper preserves `reasoning_content` across tool-call rounds (required by DeepSeek thinking mode). Every new agent turn appends a trailing `## 当前时间` block via `format_now_for_agent()` (`APP_TIMEZONE`). All agent decisions (trigger → tool calls → recommendation → user action) are in DB.
 
 ### DeepSeek thinking mode
 
@@ -85,6 +85,10 @@ HK data now uses **yfinance** (akshare East Money API is unreliable). Ticker con
 ### CN fund detection
 
 6-digit codes starting with `0` route to `ak.fund_open_fund_info_em` (NAV-based). Stock codes (6/0/3 prefix) try `stock_zh_a_spot_em` first. See `CNMarketAdapter._is_fund()`.
+
+### CN fund / ETF detail (`get_fund_info`)
+
+Agent tool `get_fund_info` (CN only) returns overview via `fund_overview_em` (tracked index, fees, company), asset mix via `fund_individual_detail_hold_xq`, and approximate constituents from the tracked CSI index (`index_stock_cons_csindex`) after name→code resolution in `adapters/cn_index_map.py`. ETF联接 (e.g. `020357`) are tagged `fund_kind=etf_feeder`; constituents are index proxies, not季报持股明细. Extend the map when a new tracked index cannot be resolved.
 
 ### Price snapshots and live fetching
 
@@ -132,11 +136,19 @@ Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`
 
 ### Display timezone
 
-DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` using `APP_TIMEZONE` (default `Asia/Shanghai` / Beijing). This fixes the apparent −8h offset when viewing job run times in China.
+DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` using `APP_TIMEZONE` (default `Asia/Shanghai` / Beijing). This fixes the apparent −8h offset when viewing job run times in China. Agent prompts also receive wall-clock via `format_now_for_agent()` appended at the end of the system message.
+
+### Holdings buy/sell ledger
+
+Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-average cost; sells use broker-style residual cost `(shares×cost − sell_shares×sell_price) / remaining` (selling at a loss raises remaining cost — matches common CN/HK brokers). Full exit sets `shares=0` and `status=closed` (row kept so transaction history survives). Dashboard / `get_portfolio` / news poll use `get_open_holdings()` only. Accepting a recommendation does **not** auto-apply a trade.
 
 ### Hourly news poll
 
 `hourly_news` fetches **ticker news + WallStreetCN headlines/latest**, then asks the agent to assess both holding-specific and macro/headline impact on the portfolio (`poll_news_for_portfolio` in `agent/core.py`).
+
+### Monthly trade review
+
+`monthly_trade_review` runs on the 1st at 21:00 Asia/Shanghai. It loads recent `transactions` and asks the agent to review timing/discipline (`run_trade_review_analysis`). No trades in the window → `job_runs` status `skipped` (no LLM call).
 
 ### Telegram chat ID discovery
 

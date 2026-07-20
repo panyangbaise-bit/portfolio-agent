@@ -5,15 +5,14 @@ interface to the LLM. The agent does not know about adapters, markets,
 or databases — it just calls these functions.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from langchain.tools import tool
 
 from db.repository import (
-    get_session, get_all_holdings, get_holding_by_ticker,
+    get_session, get_open_holdings, get_holding_by_ticker,
     create_recommendation, get_recommendation_history as db_get_rec_history,
-    upsert_price,
+    get_recent_transactions, upsert_price,
 )
 from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
@@ -30,7 +29,7 @@ def get_portfolio() -> list[dict]:
     """
     session = get_session()
     try:
-        holdings = get_all_holdings(session)
+        holdings = get_open_holdings(session)
         total_value = 0.0
         values = []
         for h in holdings:
@@ -148,6 +147,25 @@ def get_financials(ticker: str, market: str) -> dict:
 
 
 @tool
+def get_fund_info(ticker: str, top_constituents: int = 20) -> dict:
+    """获取 A 股基金/ETF/联接基金详情：跟踪指数、费率、资产配置与指数成分股。
+
+    适用于 CN 市场场外基金与 ETF 联接（如 020357）。场内股票请用 get_financials。
+
+    Args:
+        ticker: 基金代码，如 020357、510300
+        top_constituents: 返回跟踪指数成分股数量上限，默认 20
+
+    Returns:
+        dict: name, tracked_index, fees, asset_allocation, constituents, notes 等
+    """
+    adapter = adapter_registry.get("CN")
+    if not hasattr(adapter, "get_fund_info"):
+        return {"ticker": ticker, "error": "CN adapter does not support get_fund_info"}
+    return adapter.get_fund_info(ticker, top_constituents=top_constituents)
+
+
+@tool
 def get_market_snapshot(market: str) -> dict:
     """获取市场大盘指数概览。
 
@@ -230,6 +248,36 @@ def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) ->
 
 
 @tool
+def get_trade_history(days: int = 30) -> list[dict]:
+    """获取近期投资操作（买入/卖出）流水，用于复盘加减仓记录。
+
+    Args:
+        days: 回溯天数，默认 30
+
+    Returns:
+        list[dict]: 交易列表，含 ticker, action, shares, price, date, notes
+    """
+    session = get_session()
+    try:
+        txns = get_recent_transactions(session, days=days)
+        rows = []
+        for txn in txns:
+            holding = txn.holding
+            rows.append({
+                "ticker": holding.ticker if holding else None,
+                "name": holding.name if holding else None,
+                "action": txn.action,
+                "shares": txn.shares,
+                "price": txn.price,
+                "date": txn.date.isoformat() if txn.date else None,
+                "notes": txn.notes,
+            })
+        return rows
+    finally:
+        session.close()
+
+
+@tool
 def save_recommendation(
     ticker: str,
     action: str,
@@ -276,9 +324,11 @@ ALL_TOOLS = [
     get_price,
     get_kline,
     get_financials,
+    get_fund_info,
     get_market_snapshot,
     search_ticker_news,
     get_market_headlines,
     get_recommendation_history,
+    get_trade_history,
     save_recommendation,
 ]

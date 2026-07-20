@@ -11,6 +11,7 @@ from scheduler.jobs import (
     job_after_market_hk,
     job_after_market_crypto,
     job_hourly_news_poll,
+    job_monthly_trade_review,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,7 @@ JOB_FUNCTIONS: dict[str, Callable] = {
     "hk_after_market": job_after_market_hk,
     "crypto_daily": job_after_market_crypto,
     "hourly_news": job_hourly_news_poll,
+    "monthly_trade_review": job_monthly_trade_review,
 }
 
 # Track manual trigger runs for the dashboard to poll.
@@ -79,8 +81,17 @@ def start_scheduler():
         name="每小时新闻轮询",
     )
 
+    _scheduler.add_job(
+        job_monthly_trade_review,
+        trigger=CronTrigger(
+            day=1, hour=21, minute=0, timezone="Asia/Shanghai",
+        ),
+        id="monthly_trade_review",
+        name="月度交易复盘",
+    )
+
     _scheduler.start()
-    logger.info("Scheduler started with 5 jobs.")
+    logger.info("Scheduler started with 6 jobs.")
 
 
 def stop_scheduler():
