@@ -12,7 +12,7 @@ from langchain.tools import tool
 from db.repository import (
     get_session, get_open_holdings, get_holding_by_ticker,
     create_recommendation, get_recommendation_history as db_get_rec_history,
-    get_recent_transactions, upsert_price,
+    get_recent_transactions, find_similar_recommendation, upsert_price,
 )
 from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
@@ -218,7 +218,10 @@ def get_market_headlines() -> list[dict]:
 
 @tool
 def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
-    """获取历史建议记录。
+    """查看近期已保存的投资建议（含 pending / acted / dismissed）。
+
+    在调用 save_recommendation 之前应先查看：若同标的已有相同 action 的
+    pending 建议，或近期结论未变，则不要再保存，只在回复中做文字分析即可。
 
     Args:
         ticker: 可选，指定标的代码来过滤
@@ -286,7 +289,12 @@ def save_recommendation(
     urgency: str = "low",
     session_id: int = 0,
 ) -> dict:
-    """保存一条投资建议到数据库。每次分析完成后调用此工具保存结论。
+    """仅在用户需要决策时保存建议（会出现在待处理列表，需 accept/dismiss）。
+
+    降噪规则（工具会强制执行）：
+    - 日常 hold + urgency=low：不落库，只在回复里写分析。
+    - 同标的已有相同 action 的 pending，或近 7 天内相同 action+urgency：跳过。
+    保存前请先 get_recommendation_history 对照近期结论。
 
     Args:
         ticker: 标的代码
@@ -297,20 +305,50 @@ def save_recommendation(
         session_id: agent会话ID（自动传入，无需手动填写）
 
     Returns:
-        dict: 保存成功的确认信息
+        dict: status=saved | skipped_routine | skipped_unchanged
     """
+    action_n = (action or "").strip().lower()
+    urgency_n = (urgency or "low").strip().lower()
+
+    if action_n == "hold" and urgency_n == "low":
+        return {
+            "status": "skipped_routine",
+            "ticker": (ticker or "").upper(),
+            "action": action_n,
+            "urgency": urgency_n,
+            "message": "日常 hold 不写入待处理建议；请在回复中给出文字分析即可。",
+        }
+
     db_session = get_session()
     try:
+        similar = find_similar_recommendation(
+            db_session, ticker=ticker, action=action_n, urgency=urgency_n,
+        )
+        if similar is not None:
+            return {
+                "status": "skipped_unchanged",
+                "ticker": (ticker or "").upper(),
+                "action": action_n,
+                "urgency": urgency_n,
+                "existing_id": similar.id,
+                "existing_status": similar.status,
+                "message": (
+                    "同标的近期已有相同建议，未重复写入。"
+                    "请在回复中更新分析文字，勿再 save。"
+                ),
+            }
+
         rec = create_recommendation(
             db_session, session_id=session_id,
-            ticker=ticker, action=action, reasoning=reasoning,
-            confidence=confidence, urgency=urgency,
+            ticker=ticker, action=action_n, reasoning=reasoning,
+            confidence=confidence, urgency=urgency_n,
         )
         return {
             "status": "saved",
             "recommendation_id": rec.id,
             "ticker": rec.ticker,
             "action": rec.action,
+            "urgency": rec.urgency,
         }
     finally:
         db_session.close()

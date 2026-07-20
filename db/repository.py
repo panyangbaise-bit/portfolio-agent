@@ -436,6 +436,52 @@ def create_recommendation(session: Session, session_id: int, ticker: str,
     return rec
 
 
+def find_similar_recommendation(
+    session: Session,
+    ticker: str,
+    action: str,
+    urgency: str = "low",
+    within_days: int = 7,
+) -> Optional[Recommendation]:
+    """Return an existing rec that would make a new one redundant.
+
+    Prefer an open pending with the same action; else a recent rec with the
+    same action + urgency (user already acted/dismissed the same call).
+    """
+    from datetime import timedelta
+
+    ticker_u = ticker.upper()
+    action_n = (action or "").strip().lower()
+    urgency_n = (urgency or "low").strip().lower()
+
+    pending = (
+        session.query(Recommendation)
+        .filter(
+            Recommendation.ticker == ticker_u,
+            Recommendation.status == "pending",
+            Recommendation.action == action_n,
+        )
+        .order_by(desc(Recommendation.created_at))
+        .first()
+    )
+    if pending:
+        return pending
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=within_days)
+    recent = (
+        session.query(Recommendation)
+        .filter(
+            Recommendation.ticker == ticker_u,
+            Recommendation.action == action_n,
+            Recommendation.urgency == urgency_n,
+            Recommendation.created_at >= cutoff,
+        )
+        .order_by(desc(Recommendation.created_at))
+        .first()
+    )
+    return recent
+
+
 def get_pending_recommendations(session: Session) -> list[Recommendation]:
     return session.query(Recommendation).filter(
         Recommendation.status == "pending"

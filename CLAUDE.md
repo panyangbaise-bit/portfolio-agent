@@ -102,6 +102,10 @@ Crypto adapter sets `cg.session.timeout = 10`. The dashboard-wide concurrent fet
 
 `agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). **Jobs** page shows **Job Runtime Log** via `list_job_runs()`, plus **Agent Session Detail** (summary, recommendation `reasoning`, tool-call timeline) via `list_analysis_runs()` / `get_agent_session_detail()`. Tool calls are persisted by the logging `tools` node in `agent/graph.py` into `agent_tool_calls` (full params/results, 100k-char safety cap). Older `agent_sessions` rows may have null `job_id`/`market` or empty tool logs until new runs complete.
 
+### Recommendation noise reduction
+
+Jobs are **not** required to emit clickable recommendations every run. Prompt asks the agent to call `get_recommendation_history` first and default to text-only analysis. `save_recommendation` enforces: skip routine `hold`+`low`; skip if same ticker already has pending same `action`, or a same `action`+`urgency` within 7 days (`find_similar_recommendation`). Skips return `skipped_routine` / `skipped_unchanged` without creating rows.
+
 ### Scheduler outcomes are persisted
 
 `job_runs` records every actual scheduler invocation as `completed`, `skipped`, or `failed`. This distinguishes an empty news poll or no-holdings skip from a job that has not reached its cron time. Cron jobs permit a five-minute startup/restart misfire grace period.
