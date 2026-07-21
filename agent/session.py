@@ -54,7 +54,16 @@ class AgentSessionManager:
         if self.session_id:
             db = get_session()
             try:
-                end_agent_session(db, self.session_id, summary=summary)
+                end_agent_session(db, self.session_id, summary=summary, status="completed")
+            finally:
+                db.close()
+
+    def fail(self, summary: str = None):
+        """Mark session failed (timeout / hard error). Survives a late finish()."""
+        if self.session_id:
+            db = get_session()
+            try:
+                end_agent_session(db, self.session_id, summary=summary, status="failed")
             finally:
                 db.close()
 

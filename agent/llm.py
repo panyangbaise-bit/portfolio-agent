@@ -86,6 +86,7 @@ def build_deepseek_llm() -> DeepSeekChatOpenAI:
         base_url=config.DEEPSEEK_BASE_URL,
         max_tokens=config.DEEPSEEK_MAX_TOKENS,
         reasoning_effort=config.DEEPSEEK_REASONING_EFFORT,
+        timeout=config.DEEPSEEK_TIMEOUT,
         extra_body={"thinking": {"type": "enabled" if config.DEEPSEEK_THINKING else "disabled"}},
     )
     return DeepSeekChatOpenAI(**kwargs)

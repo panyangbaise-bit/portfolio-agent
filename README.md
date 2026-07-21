@@ -35,7 +35,7 @@ High-priority analysis pushed to your chat when jobs finish.
 - **Multi-market holdings** — US / CN / HK / crypto with core-satellite allocation
 - **DeepSeek thinking agent** — `deepseek-v4-pro` + thinking mode (`reasoning_effort=max`) via LangGraph
 - **Live-price resilience** — cached snapshots first, then background refresh
-- **Scheduled analysis** — after-market jobs + hourly news (ticker news and headlines)
+- **Scheduled analysis** — after-market jobs + editable news crontab (default 08:00–22:00 every 2h; ticker news and headlines)
 - **Decision audit trail** — sessions, tool calls, recommendations, and user actions in SQLite
 - **Bilingual UI** — EN / CN toggle in the top banner
 - **Telegram** — optional startup and analysis notifications
@@ -77,7 +77,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 
 5. **Review suggestions** — **Recommendations** lists pending actions; Accept or Dismiss each one. Full history is under **History**.
 
-6. **Run or schedule analysis** — **Jobs** shows next run times. Click **Run Now** to trigger immediately, or wait for cron (US/CN/HK after-market, crypto daily, hourly news). Results appear in the runtime log and Agent Session Detail; Telegram notifies when configured.
+6. **Run or schedule analysis** — **Jobs** shows next run times. Click **Run Now** to trigger immediately, or wait for cron (US/CN/HK after-market, crypto daily, news poll). Edit the news crontab on the Jobs page. Results appear in the runtime log and Agent Session Detail; Telegram notifies when configured.
 
 ## Configuration
 

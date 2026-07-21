@@ -16,8 +16,10 @@ from db.repository import (
 from scheduler.cron import (
     clear_manual_run_status,
     get_manual_run_status,
+    get_news_crontab,
     get_scheduler_status,
     trigger_job,
+    update_news_crontab,
 )
 
 JOB_IDS = (
@@ -120,6 +122,28 @@ def render_job_schedule_table():
         cols[2].write(row["next_run"])
         with cols[3]:
             _render_trigger_cell(row["id"])
+
+    _render_news_crontab_editor()
+
+
+def _render_news_crontab_editor():
+    """Allow editing the news poll 5-field crontab (persisted + live reschedule)."""
+    st.markdown(f"**{t('jobs.news_cron.title')}**")
+    st.caption(t("jobs.news_cron.help"))
+    current = get_news_crontab()
+    with st.form("news_crontab_form", clear_on_submit=False):
+        expr = st.text_input(
+            t("jobs.news_cron.label"),
+            value=current,
+        )
+        submitted = st.form_submit_button(t("jobs.news_cron.save"), type="primary")
+        if submitted:
+            try:
+                cleaned = update_news_crontab(expr)
+                st.success(t("jobs.news_cron.saved", expr=cleaned))
+                st.rerun()
+            except ValueError as e:
+                st.error(t("jobs.news_cron.invalid", error=str(e)))
 
 
 def render_job_run_table(limit: int = 50):

@@ -33,6 +33,9 @@ Copy `.env.example` to `.env`:
 | `DEEPSEEK_MAX_TOKENS` | No | `65536` |
 | `DEEPSEEK_REASONING_EFFORT` | No | `max` (`high` / `max`) |
 | `DEEPSEEK_THINKING` | No | `true` (thinking mode) |
+| `DEEPSEEK_TIMEOUT` | No | `300` (seconds; per chat/completions HTTP call) |
+| `AGENT_RUN_TIMEOUT` | No | `900` (seconds; whole LangGraph invoke) |
+| `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (08:00–22:00 every 2h; editable on Jobs page) |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` (Beijing; UI display) |
 | `AUTH_ENABLED` | No | `false` (set `true` before public deploy) |
 | `AUTH_PASSWORD` | If auth on | — (server-side only) |
@@ -51,7 +54,7 @@ app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_tog
 app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Recommendations → Jobs → History
 deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
-scheduler/    APScheduler — 4 after-market jobs + hourly news poll + monthly trade review
+scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly trade review
 notifier/     Telegram Bot
 config.py     Central config from env vars
 tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, and agent session detail
@@ -108,7 +111,15 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 ### Scheduler outcomes are persisted
 
-`job_runs` records every actual scheduler invocation as `completed`, `skipped`, or `failed`. This distinguishes an empty news poll or no-holdings skip from a job that has not reached its cron time. Cron jobs permit a five-minute startup/restart misfire grace period.
+`job_runs` records every actual scheduler invocation as `completed`, `skipped`, or `failed`. This distinguishes an empty news poll or no-holdings skip from a job that has not reached its cron time. Cron jobs permit a five-minute startup/restart misfire grace period. Default `max_instances=2` so a news poll can overlap a market after-market job.
+
+### Agent / DeepSeek timeouts
+
+`DEEPSEEK_TIMEOUT` (default 300s) is passed to ChatOpenAI as the per-request HTTP timeout so a hung `chat/completions` read cannot block forever. `AGENT_RUN_TIMEOUT` (default 900s) wraps each `agent_graph.invoke` in `agent/core.py`; on expiry the agent session is marked `failed` and jobs surface `AgentRunTimeout` → `job_runs.status=failed`. A late `finish()` after timeout does not overwrite `failed`.
+
+### Manual job triggers
+
+**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the schedule table, **News poll schedule (crontab)** edits a 5-field cron (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, recommendation reasoning, and tool calls.
 
 ### Localization
 
@@ -126,10 +137,6 @@ Streamlit auto-discovers `pages/` next to the entry script and shows top/sidebar
 
 Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.html` (reserves a huge empty layout slot). Use `inject_cyberpunk_theme()` in `app/styles/theme.py`: a height-0 `components.html` iframe writes a `<style>` tag into `window.parent.document.head` and hides its own host node.
 
-### Manual job triggers
-
-**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, recommendation reasoning, and tool calls.
-
 ### Localization toggle
 
 Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). Clicking sets `?locale=en|zh` and reloads; `app/main.py` syncs that into `st.session_state["locale"]`.
@@ -146,9 +153,9 @@ DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` 
 
 Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-average cost; sells use broker-style residual cost `(shares×cost − sell_shares×sell_price) / remaining` (selling at a loss raises remaining cost — matches common CN/HK brokers). Full exit sets `shares=0` and `status=closed` (row kept so transaction history survives). Dashboard / `get_portfolio` / news poll use `get_open_holdings()` only. Accepting a recommendation does **not** auto-apply a trade.
 
-### Hourly news poll
+### News poll
 
-`hourly_news` fetches **ticker news + WallStreetCN headlines/latest**, then asks the agent to assess both holding-specific and macro/headline impact on the portfolio (`poll_news_for_portfolio` in `agent/core.py`).
+`hourly_news` (job id unchanged) fetches **ticker news + WallStreetCN headlines/latest**, then asks the agent to assess both holding-specific and macro/headline impact (`poll_news_for_portfolio` in `agent/core.py`). Default crontab `0 8-22/2 * * *` in `APP_TIMEZONE` (08:00–22:00 every 2 hours); override via `NEWS_CRONTAB` env or the Jobs page editor (`data/scheduler_settings.json`).
 
 ### Monthly trade review
 

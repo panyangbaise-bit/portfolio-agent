@@ -88,8 +88,8 @@ def job_after_market_crypto():
 
 
 def job_hourly_news_poll():
-    run_id = _start_job_run("hourly_news", "每小时新闻轮询")
-    logger.info("Running hourly news poll...")
+    run_id = _start_job_run("hourly_news", "新闻轮询")
+    logger.info("Running news poll...")
     session = get_session()
     try:
         holdings = get_open_holdings(session)

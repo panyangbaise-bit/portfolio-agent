@@ -281,14 +281,23 @@ def create_agent_session(session: Session, triggered_by: str,
     return s
 
 
-def end_agent_session(session: Session, session_id: int, summary: str = None):
+def end_agent_session(
+    session: Session,
+    session_id: int,
+    summary: str = None,
+    status: str = "completed",
+):
+    """Mark an agent session terminal. Late 'completed' does not overwrite 'failed'."""
     s = session.query(AgentSession).filter(AgentSession.id == session_id).first()
-    if s:
-        s.status = "completed"
-        s.ended_at = datetime.now(timezone.utc)
-        if summary is not None:
-            s.summary = summary
-        session.commit()
+    if not s:
+        return
+    if s.status == "failed" and status == "completed":
+        return
+    s.status = status
+    s.ended_at = datetime.now(timezone.utc)
+    if summary is not None:
+        s.summary = summary
+    session.commit()
 
 
 def list_analysis_runs(

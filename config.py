@@ -23,13 +23,19 @@ class Config:
     DEEPSEEK_THINKING: bool = os.environ.get("DEEPSEEK_THINKING", "true").lower() in (
         "1", "true", "yes", "on",
     )
+    # Per-request HTTP timeout for chat/completions (seconds). Prevents indefinite hangs.
+    DEEPSEEK_TIMEOUT: float = float(os.environ.get("DEEPSEEK_TIMEOUT", "300"))
 
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-    # Scheduler
-    NEWS_POLL_INTERVAL_MINUTES: int = 60
+    # Scheduler / agent run limits
+    # Overall LangGraph invoke budget (multi-round tools + LLM). Must be >= DEEPSEEK_TIMEOUT.
+    AGENT_RUN_TIMEOUT: float = float(os.environ.get("AGENT_RUN_TIMEOUT", "900"))
+    # Default news poll: 08:00–22:00 Asia/Shanghai every 2 hours (editable on Jobs page).
+    # 5-field crontab: minute hour day month day_of_week
+    DEFAULT_NEWS_CRONTAB: str = os.environ.get("NEWS_CRONTAB", "0 8-22/2 * * *")
 
     # Display / logging timezone (DB timestamps stay UTC; UI converts for display).
     # Default Beijing time. Override with e.g. APP_TIMEZONE=America/New_York

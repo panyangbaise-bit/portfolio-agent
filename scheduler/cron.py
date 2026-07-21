@@ -2,9 +2,12 @@
 
 import logging
 import threading
+from typing import Callable, Optional
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from config import config
 from scheduler.jobs import (
     job_after_market_us,
     job_after_market_cn,
@@ -13,10 +16,23 @@ from scheduler.jobs import (
     job_hourly_news_poll,
     job_monthly_trade_review,
 )
+from scheduler.settings import get_news_crontab, set_news_crontab, validate_crontab
 
 logger = logging.getLogger(__name__)
 
-from typing import Callable, Optional
+# Re-export for UI / callers
+__all__ = [
+    "start_scheduler",
+    "stop_scheduler",
+    "get_scheduler_status",
+    "update_news_crontab",
+    "get_news_crontab",
+    "trigger_job",
+    "get_manual_run_status",
+    "clear_manual_run_status",
+    "JOB_FUNCTIONS",
+    "NEWS_JOB_ID",
+]
 
 _scheduler: Optional[BackgroundScheduler] = None
 
@@ -32,6 +48,14 @@ JOB_FUNCTIONS: dict[str, Callable] = {
 # Track manual trigger runs for the dashboard to poll.
 _manual_runs: dict[str, dict] = {}
 
+NEWS_JOB_ID = "hourly_news"
+NEWS_JOB_NAME = "新闻轮询"
+
+
+def _news_trigger(crontab: Optional[str] = None) -> CronTrigger:
+    expr = crontab if crontab is not None else get_news_crontab()
+    return validate_crontab(expr, timezone=config.APP_TIMEZONE)
+
 
 def start_scheduler():
     """Start the background scheduler with all jobs configured."""
@@ -42,8 +66,9 @@ def start_scheduler():
         return
 
     _scheduler = BackgroundScheduler(
+        # max_instances=2: news can overlap a market after-market job without blocking.
         # Allow short server restarts without silently losing a scheduled run.
-        job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300},
+        job_defaults={"coalesce": True, "max_instances": 2, "misfire_grace_time": 300},
     )
 
     _scheduler.add_job(
@@ -74,12 +99,14 @@ def start_scheduler():
         name="Crypto每日分析",
     )
 
+    news_cron = get_news_crontab()
     _scheduler.add_job(
         job_hourly_news_poll,
-        trigger=CronTrigger(minute=0),
-        id="hourly_news",
-        name="每小时新闻轮询",
+        trigger=_news_trigger(news_cron),
+        id=NEWS_JOB_ID,
+        name=NEWS_JOB_NAME,
     )
+    logger.info("News poll crontab: %s (%s)", news_cron, config.APP_TIMEZONE)
 
     _scheduler.add_job(
         job_monthly_trade_review,
@@ -109,12 +136,28 @@ def get_scheduler_status() -> list[dict]:
         return []
     jobs = []
     for job in _scheduler.get_jobs():
-        jobs.append({
+        entry = {
             "id": job.id,
             "name": job.name,
             "next_run": str(job.next_run_time) if job.next_run_time else "paused",
-        })
+        }
+        if job.id == NEWS_JOB_ID:
+            entry["crontab"] = get_news_crontab()
+        jobs.append(entry)
     return jobs
+
+
+def update_news_crontab(expr: str) -> str:
+    """Validate, persist, and live-reschedule the news poll job.
+
+    Returns the cleaned crontab expression.
+    Raises ValueError if the expression is invalid.
+    """
+    cleaned = set_news_crontab(expr)
+    if _scheduler is not None:
+        _scheduler.reschedule_job(NEWS_JOB_ID, trigger=_news_trigger(cleaned))
+        logger.info("Rescheduled %s to crontab: %s", NEWS_JOB_ID, cleaned)
+    return cleaned
 
 
 def trigger_job(job_id: str) -> bool:

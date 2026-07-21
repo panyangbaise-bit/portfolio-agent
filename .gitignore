@@ -25,9 +25,11 @@ venv/
 .env
 .env.local
 
-# Auth IP blacklist (runtime)
+# Auth IP blacklist + scheduler settings (runtime)
 data/ip_blacklist.json
 data/ip_blacklist.tmp
+data/scheduler_settings.json
+data/scheduler_settings.tmp
 
 # OS
 .DS_Store

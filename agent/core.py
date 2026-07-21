@@ -1,5 +1,6 @@
 """Agent core orchestrator — ties together session, graph, and tools."""
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from typing import Optional
 
 from langchain_core.messages import HumanMessage
@@ -12,6 +13,7 @@ from agent.system_prompt import (
     TRADE_REVIEW_PROMPT_EXTRA,
 )
 from adapters.news import news_adapter
+from config import config
 from db.repository import get_recent_transactions, get_session as get_db_session
 
 
@@ -21,6 +23,31 @@ _MARKET_JOB_IDS = {
     "HK": "hk_after_market",
     "CRYPTO": "crypto_daily",
 }
+
+
+class AgentRunTimeout(TimeoutError):
+    """Raised when a LangGraph invoke exceeds AGENT_RUN_TIMEOUT."""
+
+
+def _invoke_agent(session: AgentSessionManager, state: dict) -> dict:
+    """Run the agent graph with an overall wall-clock timeout.
+
+    On timeout the DB session is marked failed and AgentRunTimeout is raised.
+    The worker thread is abandoned (shutdown wait=False); DEEPSEEK_TIMEOUT
+    should eventually unblock the hung HTTP read.
+    """
+    timeout = float(config.AGENT_RUN_TIMEOUT)
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(agent_graph.invoke, state)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeout:
+            msg = f"Agent run timed out after {timeout:.0f}s"
+            session.fail(summary=msg)
+            raise AgentRunTimeout(msg)
+    finally:
+        executor.shutdown(wait=False)
 
 
 def run_after_market_analysis(market: str) -> str:
@@ -42,7 +69,7 @@ def run_after_market_analysis(market: str) -> str:
     context = AFTER_MARKET_PROMPT_EXTRA.format(market=market_name)
     message = HumanMessage(content=f"请对{market_name}市场的持仓进行盘后分析。")
 
-    result = agent_graph.invoke({
+    result = _invoke_agent(session, {
         "messages": [message],
         "session_id": session.session_id,
         "triggered_by": "schedule",
@@ -81,7 +108,7 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         )
     )
 
-    result = agent_graph.invoke({
+    result = _invoke_agent(session, {
         "messages": [message],
         "session_id": session.session_id,
         "triggered_by": "event",
@@ -129,7 +156,7 @@ def run_trade_review_analysis(days: int = 31) -> Optional[str]:
         content="请复盘近期投资操作日志，评估买卖时机与仓位纪律，必要时给出调整建议。"
     )
 
-    result = agent_graph.invoke({
+    result = _invoke_agent(session, {
         "messages": [message],
         "session_id": session.session_id,
         "triggered_by": "schedule",
@@ -156,7 +183,7 @@ def run_ad_hoc_query(question: str) -> str:
 
     message = HumanMessage(content=question)
 
-    result = agent_graph.invoke({
+    result = _invoke_agent(session, {
         "messages": [message],
         "session_id": session.session_id,
         "triggered_by": "manual",
