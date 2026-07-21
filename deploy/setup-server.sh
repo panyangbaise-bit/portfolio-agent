@@ -64,10 +64,15 @@ ensure_packages() {
 pull_app_repo() {
   local dir="$1"
   [[ -d "${dir}/.git" ]] || die "${dir} 不是 git 仓库，无法更新"
-  log "git pull ${dir} (branch=${BRANCH})"
+  # Deploy target: always match origin exactly. Local commits / dirty tracked
+  # files on the server are discarded (.env / portfolio.db / data/* stay put —
+  # they are not tracked). --ff-only fails whenever the server once diverged.
+  log "同步 ${dir} → origin/${BRANCH} (reset --hard)"
   git -C "${dir}" fetch --depth 1 origin "${BRANCH}"
-  git -C "${dir}" checkout "${BRANCH}"
-  git -C "${dir}" pull --ff-only origin "${BRANCH}"
+  git -C "${dir}" checkout -B "${BRANCH}" "origin/${BRANCH}"
+  git -C "${dir}" reset --hard "origin/${BRANCH}"
+  git -C "${dir}" clean -fd --exclude=.venv --exclude=.env --exclude=portfolio.db --exclude=data
+  log "当前提交：$(git -C "${dir}" rev-parse --short HEAD)"
 }
 
 sync_app_code() {

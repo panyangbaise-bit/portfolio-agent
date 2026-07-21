@@ -175,7 +175,7 @@ Before exposing the app on the public internet, set `AUTH_ENABLED=true` and `AUT
 
 ### Server deploy
 
-On Ubuntu, use `sudo ./deploy/setup-server.sh` from a git checkout (or let it clone into `/opt/portfolio-agent`). The script installs a venv, writes a systemd unit from `deploy/portfolio-agent.service`, and starts `portfolio-agent` on port `8501`. Edit `.env` after first install, then `systemctl restart portfolio-agent`.
+On Ubuntu, use `sudo ./deploy/setup-server.sh` from a git checkout (or let it clone into `/opt/portfolio-agent`). The script installs a venv, writes a systemd unit from `deploy/portfolio-agent.service`, and starts `portfolio-agent` on port `8501`. Re-runs sync with `git fetch` + `reset --hard origin/main` (server-local commits are discarded; `.env` / `portfolio.db` / `data/` are preserved). Edit `.env` after first install, then `systemctl restart portfolio-agent`.
 
 ## Maintenance Rule
 
