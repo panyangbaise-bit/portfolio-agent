@@ -136,25 +136,26 @@ def inject_cyberpunk_theme():
     )
 
 
-def inject_locale_toggle(locale):
-    # type: (str) -> None
-    """Mount an EN/CN button fixed in the top-right banner.
+def build_locale_toggle_html(locale):
+    # type: (str) -> str
+    """HTML for the EN/CN toggle component iframe.
 
-    Clicking toggles the `locale` query param so Streamlit reruns with the
-    new language. Safe to call on every rerun — the button is upserted by id.
+    The toggle is an ``<a href="?locale=...">`` upserted into the parent
+    ``document.body``. It must be a real link, NOT a script-driven
+    navigation: Streamlit component iframes are sandboxed without
+    ``allow-top-navigation``, so ``window.parent.location.assign(...)``
+    from the iframe realm throws SecurityError. A parent-document anchor
+    navigates in the parent's own context and needs no such permission.
 
-    Mounted on ``document.body`` (not ``stHeader``): with ``toolbarMode=minimal``
-    Streamlit sets ``pointer-events: none`` on the transparent header, which
-    would block clicks on a header-mounted button.
+    Mounted on ``document.body`` (not ``stHeader``): with
+    ``toolbarMode=minimal`` Streamlit sets ``pointer-events: none`` on the
+    transparent header, which would block clicks on a header-mounted child.
     """
-    import streamlit.components.v1 as components
-
     current = "zh" if locale == "zh" else "en"
+    nxt = "en" if current == "zh" else "zh"
     label = "CN" if current == "zh" else "EN"
-    current_js = json.dumps(current)
-    label_js = json.dumps(label)
 
-    components.html(
+    return (
         """
 <!DOCTYPE html>
 <html><head></head><body>
@@ -162,43 +163,41 @@ def inject_locale_toggle(locale):
 (function () {
   const doc = window.parent.document;
   const current = """
-        + current_js
+        + json.dumps(current)
+        + """;
+  const next = """
+        + json.dumps(nxt)
         + """;
   const label = """
-        + label_js
+        + json.dumps(label)
         + """;
-  const btnId = "pa-locale-toggle";
+  const elId = "pa-locale-toggle";
 
   function mount() {
-    // Mount on body (not stHeader). Streamlit sets pointer-events:none on
-    // the header when toolbarMode is minimal, which blocks clicks.
     const host = doc.body;
     if (!host) return false;
 
-    let btn = doc.getElementById(btnId);
-    if (!btn) {
-      btn = doc.createElement("button");
-      btn.id = btnId;
-      btn.type = "button";
-      btn.className = "pa-locale-toggle";
-      btn.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const next = btn.dataset.locale === "en" ? "zh" : "en";
-        const url = new URL(window.parent.location.href);
-        url.searchParams.set("locale", next);
-        window.parent.location.assign(url.toString());
-      });
-      host.appendChild(btn);
-    } else if (btn.parentElement !== host) {
-      host.appendChild(btn);
+    let el = doc.getElementById(elId);
+    if (el && el.tagName !== "A") {
+      el.remove();
+      el = null;
+    }
+    if (!el) {
+      el = doc.createElement("a");
+      el.id = elId;
+      el.className = "pa-locale-toggle";
+      host.appendChild(el);
+    } else if (el.parentElement !== host) {
+      host.appendChild(el);
     }
 
-    btn.dataset.locale = current;
-    btn.textContent = label;
-    btn.style.pointerEvents = "auto";
-    btn.setAttribute("aria-label", "Language");
-    btn.title = "Language";
+    const url = new URL(window.parent.location.href);
+    url.searchParams.set("locale", next);
+    el.setAttribute("href", url.toString());
+    el.dataset.locale = current;
+    el.textContent = label;
+    el.setAttribute("aria-label", "Language");
+    el.title = "Language";
     return true;
   }
 
@@ -215,7 +214,17 @@ def inject_locale_toggle(locale):
 })();
 </script>
 </body></html>
-        """,
-        height=0,
-        scrolling=False,
+"""
     )
+
+
+def inject_locale_toggle(locale):
+    # type: (str) -> None
+    """Mount the EN/CN toggle link in the top-right banner.
+
+    Safe to call on every rerun — the anchor is upserted by id and its href
+    always points at the opposite locale.
+    """
+    import streamlit.components.v1 as components
+
+    components.html(build_locale_toggle_html(locale), height=0, scrolling=False)

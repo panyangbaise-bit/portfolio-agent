@@ -89,6 +89,7 @@ header[data-testid="stHeader"],
   }
 
   /* EN/CN toggle — ensure it stays on top on mobile */
+  a.pa-locale-toggle,
   button.pa-locale-toggle {
     top: 0.4rem !important;
     right: 0.5rem !important;
@@ -287,8 +288,10 @@ textarea, [data-testid="stTextArea"] textarea,
   border-left: 3px solid var(--cp-cyan);
 }
 
-/* Hide Streamlit Deploy + ⋮ settings/menu (belt-and-suspenders with toolbarMode=minimal) */
-div[data-testid="stToolbar"],
+/* Hide Streamlit Deploy + ⋮ settings/menu (belt-and-suspenders with toolbarMode=minimal).
+   Do NOT hide the whole stToolbar container: it also hosts
+   stExpandSidebarButton, the only control that reopens a collapsed sidebar
+   (mobile auto-collapses it — hiding the toolbar kills page navigation). */
 [data-testid="stAppDeployButton"],
 .stAppDeployButton,
 [data-testid="stMainMenu"],
@@ -302,15 +305,21 @@ header [data-testid="stDecoration"] {
   pointer-events: none !important;
 }
 
-/* EN/CN toggle pinned to the top-right banner.
+/* EN/CN toggle pinned to the top-right banner — an <a href="?locale=..">
+   anchor in the parent document (component iframes are sandboxed without
+   allow-top-navigation, so script navigation would throw SecurityError).
    Must set pointer-events:auto — Streamlit's stHeader uses
    pointer-events:none when the toolbar is empty/minimal, which
    would otherwise swallow clicks on children without an override. */
+a.pa-locale-toggle,
 button.pa-locale-toggle {
   position: fixed !important;
   top: 0.5rem !important;
   right: 1rem !important;
   left: auto !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   height: 1.75rem;
   min-width: 2.75rem;
   padding: 0 0.7rem;
@@ -322,13 +331,16 @@ button.pa-locale-toggle {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
+  text-decoration: none !important;
   cursor: pointer;
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
   z-index: 1000000 !important;
   pointer-events: auto !important;
 }
 
+a.pa-locale-toggle:hover,
 button.pa-locale-toggle:hover {
   background: rgba(0, 240, 255, 0.18);
   box-shadow: 0 0 16px rgba(0, 240, 255, 0.55);
+  color: var(--cp-cyan);
 }

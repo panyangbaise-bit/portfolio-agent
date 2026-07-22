@@ -139,11 +139,11 @@ Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.ht
 
 ### Mobile sidebar
 
-On screens up to 768px, the native Streamlit sidebar remains collapsed until the top-left control is tapped. The CSS drawer rules must target only `section[data-testid="stSidebar"][aria-expanded="true"]`: applying a full viewport width to the collapsed sidebar retains Streamlit’s negative `translateX`, leaving a sidebar sliver and clipping the main content. An expanded sidebar is a fixed drawer capped at 90vw; the main area keeps its full width.
+On screens up to 768px, the native Streamlit sidebar remains collapsed until the top-left `stExpandSidebarButton` (inside `stToolbar`) is tapped. The CSS drawer rules must target only `section[data-testid="stSidebar"][aria-expanded="true"]`: applying a full viewport width to the collapsed sidebar retains Streamlit’s negative `translateX`, leaving a sidebar sliver and clipping the main content. An expanded sidebar is a fixed drawer capped at 90vw; the main area keeps its full width.
 
 ### Localization toggle
 
-Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). The button is mounted on `document.body` with `pointer-events: auto` — Streamlit's `stHeader` uses `pointer-events: none` when `toolbarMode=minimal`, which would otherwise swallow clicks. Clicking sets `?locale=en|zh` and reloads; `app/main.py` syncs that into `st.session_state["locale"]`.
+Language is toggled by a fixed **EN** / **CN** control in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). It must be an `<a href="?locale=en|zh">` anchor upserted into the parent `document.body`, **not** a JS-navigated button: Streamlit component iframes are sandboxed without `allow-top-navigation`, so `window.parent.location.assign()` from the iframe realm throws SecurityError. The anchor also needs `pointer-events: auto` — Streamlit's `stHeader` uses `pointer-events: none` when `toolbarMode=minimal`. `app/main.py` syncs `?locale=` into `st.session_state["locale"]`.
 
 ### Watchlist
 
@@ -151,7 +151,7 @@ Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`
 
 ### Hide Streamlit Deploy / settings menu
 
-[`.streamlit/config.toml`](.streamlit/config.toml) sets `client.toolbarMode = "minimal"`. Theme CSS also force-hides Deploy and the ⋮ main menu so they stay gone on localhost. Restart Streamlit after changing `config.toml`.
+[`.streamlit/config.toml`](.streamlit/config.toml) sets `client.toolbarMode = "minimal"`. Theme CSS also force-hides Deploy (`stAppDeployButton`) and the ⋮ main menu (`stMainMenu`) individually — do **not** hide the whole `stToolbar` container: it hosts `stExpandSidebarButton`, the only control that reopens a collapsed sidebar (mobile auto-collapses it, so hiding the toolbar kills page navigation on phones). Restart Streamlit after changing `config.toml`.
 
 ### Display timezone
 
