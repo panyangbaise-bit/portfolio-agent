@@ -181,6 +181,117 @@ def get_market_snapshot(market: str) -> dict:
 
 # ── News Tools ────────────────────────────────────────────
 
+# ── Watchlist Tools ───────────────────────────────────────
+
+@tool
+def get_watchlist(status: Optional[str] = None) -> list[dict]:
+    """获取监察表（Watchlist）中的所有标的。监察表是用户感兴趣的待建仓标的列表，
+    用户在等待合适的建仓时机。
+
+    Args:
+        status: 可选过滤 — watching（观察中）, monitoring（密切监控）, converted（已建仓）
+
+    Returns:
+        list[dict]: 监察表项列表，每项含 id, ticker, name, market, watch_reason,
+                    target_price_low, target_price_high, status, priority, created_at
+    """
+    from db.repository import get_watchlist_items
+    session = get_session()
+    try:
+        items = get_watchlist_items(session, status=status)
+        return [
+            {
+                "id": item.id,
+                "ticker": item.ticker,
+                "name": item.name,
+                "market": item.market,
+                "watch_reason": item.watch_reason,
+                "target_price_low": item.target_price_low,
+                "target_price_high": item.target_price_high,
+                "status": item.status,
+                "priority": item.priority,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+            }
+            for item in items
+        ]
+    finally:
+        session.close()
+
+
+@tool
+def add_to_watchlist(
+    ticker: str,
+    market: str,
+    name: Optional[str] = None,
+    watch_reason: Optional[str] = None,
+    target_price_low: Optional[float] = None,
+    target_price_high: Optional[float] = None,
+    priority: str = "medium",
+) -> dict:
+    """将标的加入监察表。当用户表示对某个标的感兴趣但不想立即建仓时使用。
+
+    Args:
+        ticker: 标的代码
+        market: 市场 — US, CN, HK, CRYPTO
+        name: 显示名称（可选）
+        watch_reason: 关注理由
+        target_price_low: 目标建仓价位下限
+        target_price_high: 目标建仓价位上限
+        priority: 优先级 — high, medium, low
+
+    Returns:
+        dict: status=added, ticker, id
+    """
+    from db.repository import create_watchlist_item, get_watchlist_by_ticker
+    session = get_session()
+    try:
+        existing = get_watchlist_by_ticker(session, ticker)
+        if existing:
+            return {
+                "status": "already_exists",
+                "ticker": existing.ticker,
+                "id": existing.id,
+                "message": f"{ticker} 已在监察表中（状态: {existing.status}）",
+            }
+        item = create_watchlist_item(
+            session,
+            ticker=ticker,
+            market=market,
+            name=name,
+            watch_reason=watch_reason,
+            target_price_low=target_price_low,
+            target_price_high=target_price_high,
+            priority=priority,
+        )
+        return {"status": "added", "ticker": item.ticker, "id": item.id}
+    finally:
+        session.close()
+
+
+@tool
+def remove_from_watchlist(ticker: str) -> dict:
+    """从监察表中移除标的。
+
+    Args:
+        ticker: 标的代码
+
+    Returns:
+        dict: status=removed | not_found
+    """
+    from db.repository import get_watchlist_by_ticker, delete_watchlist_item
+    session = get_session()
+    try:
+        item = get_watchlist_by_ticker(session, ticker)
+        if not item:
+            return {"status": "not_found", "ticker": ticker, "message": "该标的不在监察表中"}
+        delete_watchlist_item(session, item.id)
+        return {"status": "removed", "ticker": item.ticker}
+    finally:
+        session.close()
+
+
+# ── News Tools (continued) ────────────────────────────────
+
 @tool
 def search_ticker_news(ticker: str, days: int = 7) -> list[dict]:
     """搜索与某个标的相关的最近新闻。
@@ -369,4 +480,7 @@ ALL_TOOLS = [
     get_recommendation_history,
     get_trade_history,
     save_recommendation,
+    get_watchlist,
+    add_to_watchlist,
+    remove_from_watchlist,
 ]

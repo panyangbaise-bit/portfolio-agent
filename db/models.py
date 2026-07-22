@@ -189,6 +189,35 @@ class Recommendation(Base):
         return f"<Recommendation(id={self.id}, ticker='{self.ticker}', action='{self.action}')>"
 
 
+class WatchlistItem(Base):
+    """Watchlist — stocks the user is monitoring before deciding to enter.
+
+    Each item records the ticker, target price zone, watch reason, and
+    monitoring status. The agent can query this list to help judge entry
+    timing. When the user buys in, the item can be converted to a Holding.
+    """
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        Index("ix_watchlist_status", "status"),
+        Index("ix_watchlist_ticker", "ticker"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    market: Mapped[str] = mapped_column(String(10), nullable=False)
+    watch_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    target_price_low: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    target_price_high: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="watching")
+    priority: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    def __repr__(self):
+        return f"<WatchlistItem(id={self.id}, ticker='{self.ticker}', status='{self.status}')>"
+
+
 class UserAction(Base):
     __tablename__ = "user_actions"
 

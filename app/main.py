@@ -32,6 +32,7 @@ _PROCESS_LOCK = threading.Lock()
 NAV_ITEMS = [
     ("dashboard", "app/views/dashboard.py"),
     ("holdings", "app/views/holdings.py"),
+    ("watchlist", "app/views/watchlist.py"),
     ("recommendations", "app/views/recommendations.py"),
     ("jobs", "app/views/jobs.py"),
     ("history", "app/views/history.py"),

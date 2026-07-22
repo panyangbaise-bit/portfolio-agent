@@ -516,3 +516,71 @@ def record_user_action(session: Session, recommendation_id: int,
         rec.status = "acted" if action == "accept" else "dismissed"
     session.commit()
     return ua
+
+
+# ── Watchlist ─────────────────────────────────────────────
+
+def create_watchlist_item(
+    session: Session,
+    ticker: str,
+    market: str,
+    name: str = None,
+    watch_reason: str = None,
+    target_price_low: float = None,
+    target_price_high: float = None,
+    priority: str = "medium",
+) -> "WatchlistItem":
+    from db.models import WatchlistItem
+    item = WatchlistItem(
+        ticker=ticker.upper(),
+        market=market.upper(),
+        name=name,
+        watch_reason=watch_reason,
+        target_price_low=target_price_low,
+        target_price_high=target_price_high,
+        status="watching",
+        priority=priority,
+    )
+    session.add(item)
+    session.commit()
+    return item
+
+
+def get_watchlist_items(session: Session, status: str = None) -> list:
+    """Return watchlist items, optionally filtered by status."""
+    from db.models import WatchlistItem
+    q = session.query(WatchlistItem)
+    if status:
+        q = q.filter(WatchlistItem.status == status)
+    return q.order_by(WatchlistItem.priority.desc(), WatchlistItem.created_at.desc()).all()
+
+
+def get_watchlist_by_ticker(session: Session, ticker: str):
+    """Return a watchlist item by ticker, or None."""
+    from db.models import WatchlistItem
+    return session.query(WatchlistItem).filter(WatchlistItem.ticker == ticker.upper()).first()
+
+
+def update_watchlist_item(session: Session, item_id: int, **kwargs):
+    """Update watchlist item fields. Returns the updated item or None."""
+    from db.models import WatchlistItem
+    from datetime import datetime, timezone
+    item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
+    if item:
+        for k, v in kwargs.items():
+            if v is not None and hasattr(item, k):
+                setattr(item, k, v)
+        item.updated_at = datetime.now(timezone.utc)
+        session.commit()
+    return item
+
+
+def delete_watchlist_item(session: Session, item_id: int) -> bool:
+    """Delete a watchlist item. Returns True if deleted."""
+    from db.models import WatchlistItem
+    item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
+    if item:
+        session.delete(item)
+        session.commit()
+        return True
+    return False

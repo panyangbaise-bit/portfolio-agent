@@ -53,6 +53,32 @@ MIGRATIONS = [
         "v4_holdings_status",
         "ALTER TABLE holdings ADD COLUMN status VARCHAR(20) DEFAULT 'open'",
     ),
+    (
+        "v5_create_watchlist",
+        """
+        CREATE TABLE IF NOT EXISTS watchlist_items (
+            id INTEGER PRIMARY KEY,
+            ticker VARCHAR(20) NOT NULL,
+            name VARCHAR(100),
+            market VARCHAR(10) NOT NULL,
+            watch_reason TEXT,
+            target_price_low FLOAT,
+            target_price_high FLOAT,
+            status VARCHAR(20) NOT NULL DEFAULT 'watching',
+            priority VARCHAR(10) NOT NULL DEFAULT 'medium',
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL
+        )
+        """,
+    ),
+    (
+        "v5b_watchlist_indexes",
+        "CREATE INDEX IF NOT EXISTS ix_watchlist_status ON watchlist_items (status)",
+    ),
+    (
+        "v5c_watchlist_ticker_index",
+        "CREATE INDEX IF NOT EXISTS ix_watchlist_ticker ON watchlist_items (ticker)",
+    ),
 ]
 
 
