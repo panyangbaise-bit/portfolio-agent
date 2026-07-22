@@ -100,28 +100,61 @@ def get_holding(ticker: str) -> dict:
 
 # ── Market Data Tools ─────────────────────────────────────
 
+def _resolve_adapters_for_batch(tickers: list[str], market: str):
+    """Resolve adapter per ticker when market may be comma-separated."""
+    markets = [m.strip() for m in str(market).split(",") if m.strip()]
+    if not markets:
+        return {}, tickers
+    if len(markets) == 1:
+        try:
+            return {t: adapter_registry.get(markets[0]) for t in tickers}, tickers
+        except ValueError:
+            pass
+    pairs = []
+    mappers = {}
+    for i, t in enumerate(tickers):
+        mk = markets[i] if i < len(markets) else markets[-1]
+        try:
+            mappers[t] = adapter_registry.get(mk)
+            pairs.append((t, mk))
+        except ValueError:
+            pairs.append((t, None))
+    return mappers, tickers
+
+
 @tool
 def get_price(ticker: str, market: str) -> dict:
     """获取标的价格和日内变动。支持单个和批量查询。
 
+    单个: get_price(ticker="AAPL", market="US")
+    同市场批量: get_price(ticker="AAPL,TSLA", market="US")
+    跨市场批量: get_price(ticker="AAPL,600519", market="US,CN")
+
     Args:
-        ticker: 单个标的代码如 "AAPL"，或多个逗号分隔如 "AAPL,TSLA,GOOGL"
-        market: 市场代码 — US, CN, HK, 或 CRYPTO
+        ticker: 单个标的代码，或多个逗号分隔
+        market: 市场代码，多标的时可逗号分隔与ticker一一对应
 
     Returns:
-        dict: 单个时 {ticker, price, currency, change_pct, ...}
-              多个时 {"batch": true, "results": {ticker: {price, ...}, ...}}
+        单个时 {ticker, price, ...}
+        多个时 {"batch": true, "results": {ticker: {price, ...}, ...}}
     """
-    adapter = adapter_registry.get(market)
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
     if not tickers:
         return {"error": "no valid tickers"}
+    adapters, _ = _resolve_adapters_for_batch(tickers, market)
     if len(tickers) == 1:
-        return adapter.get_price(tickers[0])
+        ad = adapters.get(tickers[0])
+        if ad is None:
+            return {"error": f"no adapter for market: {market}"}
+        return ad.get_price(tickers[0])
     results = {}
     for t in tickers:
+        ad = adapters.get(t)
+        if ad is None:
+            results[t] = {"error": f"unknown market for {t}"}
+            continue
         try:
-            results[t] = adapter.get_price(t)
+            results[t] = ad.get_price(t)
         except Exception as e:
             results[t] = {"error": str(e)}
     return {"batch": True, "results": results}
@@ -131,26 +164,28 @@ def get_price(ticker: str, market: str) -> dict:
 def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
     """获取历史K线数据。支持单个和批量查询。
 
-    Args:
-        ticker: 单个标的代码，或多个逗号分隔如 "AAPL,TSLA"
-        market: 市场代码 — US, CN, HK, 或 CRYPTO
-        period: 时间周期 — 1mo, 3mo, 6mo, 1y, 5y
-
-    Returns:
-        单个时: list[dict] K线数据列表
-        多个时: {"batch": true, "results": {ticker: [{date, open, ...}, ...], ...}}
+    单个: get_kline(ticker="AAPL", market="US", period="3mo")
+    同市场批量: get_kline(ticker="AAPL,TSLA", market="US")
+    跨市场批量: get_kline(ticker="AAPL,600519", market="US,CN")
     """
-    adapter = adapter_registry.get(market)
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
     if not tickers:
         return {"error": "no valid tickers"}
+    adapters, _ = _resolve_adapters_for_batch(tickers, market)
     if len(tickers) == 1:
-        return adapter.get_kline(tickers[0], period)
+        ad = adapters.get(tickers[0])
+        if ad is None:
+            return {"error": f"no adapter for market: {market}"}
+        return ad.get_kline(tickers[0], period)
     results = {}
     for t in tickers:
+        ad = adapters.get(t)
+        if ad is None:
+            results[t] = []
+            continue
         try:
-            results[t] = adapter.get_kline(t, period)
-        except Exception as e:
+            results[t] = ad.get_kline(t, period)
+        except Exception:
             results[t] = []
     return {"batch": True, "results": results}
 
@@ -159,24 +194,27 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
 def get_financials(ticker: str, market: str) -> dict:
     """获取财报基本面数据。支持单个和批量查询。
 
-    Args:
-        ticker: 单个标的代码，或多个逗号分隔如 "AAPL,TSLA"
-        market: 市场代码 — US, CN, HK, 或 CRYPTO
-
-    Returns:
-        单个时: dict 含 report_date, revenue, eps, pe_ratio, roe 等
-        多个时: {"batch": true, "results": {ticker: {report_date, ...}, ...}}
+    单个: get_financials(ticker="AAPL", market="US")
+    同市场批量: get_financials(ticker="AAPL,TSLA", market="US")
+    跨市场批量: get_financials(ticker="AAPL,600519", market="US,CN")
     """
-    adapter = adapter_registry.get(market)
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
     if not tickers:
         return {"error": "no valid tickers"}
+    adapters, _ = _resolve_adapters_for_batch(tickers, market)
     if len(tickers) == 1:
-        return adapter.get_financials(tickers[0])
+        ad = adapters.get(tickers[0])
+        if ad is None:
+            return {"error": f"no adapter for market: {market}"}
+        return ad.get_financials(tickers[0])
     results = {}
     for t in tickers:
+        ad = adapters.get(t)
+        if ad is None:
+            results[t] = {"error": f"unknown market for {t}"}
+            continue
         try:
-            results[t] = adapter.get_financials(t)
+            results[t] = ad.get_financials(t)
         except Exception as e:
             results[t] = {"error": str(e)}
     return {"batch": True, "results": results}
