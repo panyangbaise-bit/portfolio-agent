@@ -102,48 +102,84 @@ def get_holding(ticker: str) -> dict:
 
 @tool
 def get_price(ticker: str, market: str) -> dict:
-    """获取标的当前价格和日内变动。
+    """获取标的价格和日内变动。支持单个和批量查询。
 
     Args:
-        ticker: 标的代码
+        ticker: 单个标的代码如 "AAPL"，或多个逗号分隔如 "AAPL,TSLA,GOOGL"
         market: 市场代码 — US, CN, HK, 或 CRYPTO
 
     Returns:
-        dict: 含 ticker, price, currency, change_pct, volume, timestamp
+        dict: 单个时 {ticker, price, currency, change_pct, ...}
+              多个时 {"batch": true, "results": {ticker: {price, ...}, ...}}
     """
     adapter = adapter_registry.get(market)
-    return adapter.get_price(ticker)
+    tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
+    if not tickers:
+        return {"error": "no valid tickers"}
+    if len(tickers) == 1:
+        return adapter.get_price(tickers[0])
+    results = {}
+    for t in tickers:
+        try:
+            results[t] = adapter.get_price(t)
+        except Exception as e:
+            results[t] = {"error": str(e)}
+    return {"batch": True, "results": results}
 
 
 @tool
 def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
-    """获取标的历史K线数据。
+    """获取历史K线数据。支持单个和批量查询。
 
     Args:
-        ticker: 标的代码
+        ticker: 单个标的代码，或多个逗号分隔如 "AAPL,TSLA"
         market: 市场代码 — US, CN, HK, 或 CRYPTO
         period: 时间周期 — 1mo, 3mo, 6mo, 1y, 5y
 
     Returns:
-        list[dict]: K线数据列表，每项含 date, open, high, low, close, volume
+        单个时: list[dict] K线数据列表
+        多个时: {"batch": true, "results": {ticker: [{date, open, ...}, ...], ...}}
     """
     adapter = adapter_registry.get(market)
-    return adapter.get_kline(ticker, period)
+    tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
+    if not tickers:
+        return {"error": "no valid tickers"}
+    if len(tickers) == 1:
+        return adapter.get_kline(tickers[0], period)
+    results = {}
+    for t in tickers:
+        try:
+            results[t] = adapter.get_kline(t, period)
+        except Exception as e:
+            results[t] = []
+    return {"batch": True, "results": results}
 
 
 @tool
 def get_financials(ticker: str, market: str) -> dict:
-    """获取标的最近财报数据，包括营收、EPS、PE、ROE等基本面指标。
+    """获取财报基本面数据。支持单个和批量查询。
 
     Args:
-        ticker: 标的代码
+        ticker: 单个标的代码，或多个逗号分隔如 "AAPL,TSLA"
         market: 市场代码 — US, CN, HK, 或 CRYPTO
 
     Returns:
-        dict: 含 ticker, report_date, revenue, revenue_growth, eps, pe_ratio, pb_ratio, roe 等
+        单个时: dict 含 report_date, revenue, eps, pe_ratio, roe 等
+        多个时: {"batch": true, "results": {ticker: {report_date, ...}, ...}}
     """
     adapter = adapter_registry.get(market)
-    return adapter.get_financials(ticker)
+    tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
+    if not tickers:
+        return {"error": "no valid tickers"}
+    if len(tickers) == 1:
+        return adapter.get_financials(tickers[0])
+    results = {}
+    for t in tickers:
+        try:
+            results[t] = adapter.get_financials(t)
+        except Exception as e:
+            results[t] = {"error": str(e)}
+    return {"batch": True, "results": results}
 
 
 @tool
@@ -393,31 +429,73 @@ def get_trade_history(days: int = 30) -> list[dict]:
 
 @tool
 def save_recommendation(
-    ticker: str,
-    action: str,
-    reasoning: str,
-    confidence: float,
+    ticker: str = "",
+    action: str = "",
+    reasoning: str = "",
+    confidence: float = 0.0,
     urgency: str = "low",
     session_id: int = 0,
+    recommendations: Optional[list] = None,
 ) -> dict:
-    """仅在用户需要决策时保存建议（会出现在待处理列表，需 accept/dismiss）。
+    """保存投资建议。支持单个和批量模式。
 
     降噪规则（工具会强制执行）：
-    - 日常 hold + urgency=low：不落库，只在回复里写分析。
+    - 日常 hold + urgency=low：不落库。
     - 同标的已有相同 action 的 pending，或近 7 天内相同 action+urgency：跳过。
     保存前请先 get_recommendation_history 对照近期结论。
 
     Args:
-        ticker: 标的代码
-        action: 建议操作 — buy_add, reduce, hold, watch
-        reasoning: 推理链条（2-4句话）
-        confidence: 置信度 0.0-1.0
-        urgency: 紧迫度 — low, medium, high
-        session_id: agent会话ID（自动传入，无需手动填写）
+        ticker: 标的代码（单条模式，传空则在 recommendations 中批量）
+        action: 建议操作（单条模式）
+        reasoning: 推理链条（单条模式）
+        confidence: 置信度（单条模式）
+        urgency: 紧迫度（单条/批量共用）
+        session_id: agent会话ID（自动传入）
+        recommendations: 批量建议列表，每条为 {ticker, action, reasoning, confidence, urgency}
 
     Returns:
-        dict: status=saved | skipped_routine | skipped_unchanged
+        dict: 单条时 status=saved|skipped_routine|skipped_unchanged
+              批量时 {"batch": true, "results": [{status, ...}, ...], "total": N, "saved": N}
     """
+    # ── Batch mode ──
+    if recommendations and isinstance(recommendations, list) and len(recommendations) > 0:
+        db_session = get_session()
+        try:
+            results = []
+            saved_count = 0
+            for rec_item in recommendations:
+                r_ticker = (rec_item.get("ticker") or "").strip().upper()
+                r_action = (rec_item.get("action") or "").strip().lower()
+                r_reasoning = rec_item.get("reasoning") or ""
+                r_confidence = float(rec_item.get("confidence") or 0)
+                r_urgency = (rec_item.get("urgency") or "low").strip().lower()
+
+                if r_action == "hold" and r_urgency == "low":
+                    results.append({"ticker": r_ticker, "status": "skipped_routine",
+                                    "message": "日常 hold 不写入"})
+                    continue
+
+                similar = find_similar_recommendation(
+                    db_session, ticker=r_ticker, action=r_action, urgency=r_urgency,
+                )
+                if similar is not None:
+                    results.append({"ticker": r_ticker, "status": "skipped_unchanged",
+                                    "existing_id": similar.id})
+                    continue
+
+                rec = create_recommendation(
+                    db_session, session_id=session_id,
+                    ticker=r_ticker, action=r_action, reasoning=r_reasoning,
+                    confidence=r_confidence, urgency=r_urgency,
+                )
+                saved_count += 1
+                results.append({"ticker": rec.ticker, "status": "saved",
+                                "recommendation_id": rec.id, "action": rec.action})
+            return {"batch": True, "results": results, "total": len(results), "saved": saved_count}
+        finally:
+            db_session.close()
+
+    # ── Single mode (backward compatible) ──
     action_n = (action or "").strip().lower()
     urgency_n = (urgency or "low").strip().lower()
 
