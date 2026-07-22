@@ -562,13 +562,17 @@ def get_watchlist_by_ticker(session: Session, ticker: str):
 
 
 def update_watchlist_item(session: Session, item_id: int, **kwargs):
-    """Update watchlist item fields. Returns the updated item or None."""
+    """Update watchlist item fields. Returns the updated item or None.
+
+    Empty strings are allowed (e.g. clearing watch_reason). Only keys present
+    in kwargs are written; omitted keys are left unchanged.
+    """
     from db.models import WatchlistItem
     from datetime import datetime, timezone
     item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
     if item:
         for k, v in kwargs.items():
-            if v is not None and hasattr(item, k):
+            if hasattr(item, k):
                 setattr(item, k, v)
         item.updated_at = datetime.now(timezone.utc)
         session.commit()

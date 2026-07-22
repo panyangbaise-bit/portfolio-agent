@@ -142,6 +142,10 @@ def inject_locale_toggle(locale):
 
     Clicking toggles the `locale` query param so Streamlit reruns with the
     new language. Safe to call on every rerun — the button is upserted by id.
+
+    Mounted on ``document.body`` (not ``stHeader``): with ``toolbarMode=minimal``
+    Streamlit sets ``pointer-events: none`` on the transparent header, which
+    would block clicks on a header-mounted button.
     """
     import streamlit.components.v1 as components
 
@@ -166,9 +170,9 @@ def inject_locale_toggle(locale):
   const btnId = "pa-locale-toggle";
 
   function mount() {
-    // Prefer attaching inside the header toolbar area; fall back to body.
-    const header = doc.querySelector('header[data-testid="stHeader"]');
-    const host = header || doc.body;
+    // Mount on body (not stHeader). Streamlit sets pointer-events:none on
+    // the header when toolbarMode is minimal, which blocks clicks.
+    const host = doc.body;
     if (!host) return false;
 
     let btn = doc.getElementById(btnId);
@@ -177,11 +181,13 @@ def inject_locale_toggle(locale):
       btn.id = btnId;
       btn.type = "button";
       btn.className = "pa-locale-toggle";
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
         const next = btn.dataset.locale === "en" ? "zh" : "en";
         const url = new URL(window.parent.location.href);
         url.searchParams.set("locale", next);
-        window.parent.location.href = url.toString();
+        window.parent.location.assign(url.toString());
       });
       host.appendChild(btn);
     } else if (btn.parentElement !== host) {
@@ -190,6 +196,7 @@ def inject_locale_toggle(locale):
 
     btn.dataset.locale = current;
     btn.textContent = label;
+    btn.style.pointerEvents = "auto";
     btn.setAttribute("aria-label", "Language");
     btn.title = "Language";
     return true;

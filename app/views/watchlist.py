@@ -1,4 +1,4 @@
-"""Watchlist 监察表 — track interested stocks before entering positions."""
+"""Watchlist — track interested stocks before entering positions."""
 
 import streamlit as st
 from app.i18n import t
@@ -8,9 +8,6 @@ from db.repository import (
     create_watchlist_item,
     update_watchlist_item,
     delete_watchlist_item,
-    get_holding_by_ticker,
-    create_holding,
-    create_transaction,
 )
 
 _FLASH_KEY = "wl_flash"
@@ -129,8 +126,6 @@ finally:
 if not items:
     st.info(t("watchlist.empty"))
 else:
-    from datetime import datetime, timezone
-
     st.subheader(t("watchlist.table.title"))
     for item in items:
         display = f"{item.name} ({item.ticker})" if item.name else item.ticker
@@ -157,113 +152,50 @@ else:
                 if created:
                     st.caption(f"📅 {created.strftime('%Y-%m-%d')}")
 
-            # action buttons
-            ca, cb, cc = st.columns(3)
+            # action buttons: Edit reason + Delete
+            ca, cb = st.columns(2)
             with ca:
-                # Check price now
-                if st.button(
-                    t("watchlist.action.check_price"), key=f"wl_check_{item.id}"
-                ):
-                    try:
-                        from adapters.base import registry as adapter_registry
-                        adapter = adapter_registry.get(item.market)
-                        price_data = adapter.get_price(item.ticker)
-                        price = price_data.get("price")
-                        if price:
-                            in_range = ""
-                            if item.target_price_low and price < item.target_price_low:
-                                in_range = f" ⬇️ {t('watchlist.below_target')}"
-                            elif item.target_price_high and price > item.target_price_high:
-                                in_range = f" ⬆️ {t('watchlist.above_target')}"
-                            elif item.target_price_low and item.target_price_high and item.target_price_low <= price <= item.target_price_high:
-                                in_range = f" ✅ {t('watchlist.in_range')}"
-                            st.info(f"{item.ticker}: {price}{in_range}")
-                        else:
-                            st.warning(t("watchlist.price_unavailable"))
-                    except Exception as e:
-                        st.error(str(e))
-
-            with cb:
-                # Convert to holding
                 item_id = item.id
                 tkr = item.ticker
-                mkt = item.market
-                if st.button(
-                    t("watchlist.action.convert"), key=f"wl_convert_{item.id}"
-                ):
-                    st.session_state[f"wl_convert_showing_{item.id}"] = True
+                if st.button(t("watchlist.action.edit"), key=f"wl_edit_{item.id}"):
+                    st.session_state[f"wl_edit_showing_{item.id}"] = True
 
-                if st.session_state.get(f"wl_convert_showing_{item.id}"):
-                    with st.form(key=f"wl_convert_form_{item.id}"):
-                        shares = st.number_input(
-                            t("holdings.field.shares"),
-                            min_value=0.0,
-                            step=0.0001,
-                            format="%.10f",
-                            key=f"wl_conv_shares_{item.id}",
-                        )
-                        cost = st.number_input(
-                            t("holdings.field.cost"),
-                            min_value=0.0,
-                            step=0.0001,
-                            format="%.10f",
-                            key=f"wl_conv_cost_{item.id}",
-                        )
-                        pos_type = st.radio(
-                            t("holdings.field.position_type"),
-                            ["core", "satellite"],
-                            horizontal=True,
-                            key=f"wl_conv_type_{item.id}",
+                if st.session_state.get(f"wl_edit_showing_{item.id}"):
+                    with st.form(key=f"wl_edit_form_{item.id}"):
+                        new_reason = st.text_area(
+                            t("watchlist.field.reason"),
+                            value=item.watch_reason or "",
+                            placeholder=t("watchlist.field.reason_placeholder"),
+                            key=f"wl_edit_reason_{item.id}",
                         )
                         col_x, col_y = st.columns(2)
                         with col_x:
-                            if st.form_submit_button(t("watchlist.convert.submit")):
-                                if shares <= 0 or cost <= 0:
-                                    st.error(t("holdings.add.invalid"))
-                                else:
-                                    txn_session = get_session()
-                                    try:
-                                        holding = create_holding(
-                                            txn_session,
-                                            ticker=tkr,
-                                            market=mkt,
-                                            shares=shares,
-                                            cost_basis=cost,
-                                            position_type=pos_type,
-                                            name=item.name,
-                                        )
-                                        create_transaction(
-                                            txn_session,
-                                            holding.id,
-                                            action="buy",
-                                            shares=shares,
-                                            price=cost,
-                                            notes=f"建仓自监察表 ({tkr})",
-                                        )
-                                        update_watchlist_item(
-                                            txn_session, item_id, status="converted"
-                                        )
-                                        _set_flash(
-                                            "success",
-                                            t("watchlist.convert.success", ticker=tkr),
-                                        )
-                                        st.rerun()
-                                    except Exception as exc:
-                                        st.error(
-                                            t("watchlist.convert.failed", error=str(exc))
-                                        )
-                                    finally:
-                                        txn_session.close()
+                            if st.form_submit_button(t("watchlist.edit.submit"), type="primary"):
+                                edit_session = get_session()
+                                try:
+                                    update_watchlist_item(
+                                        edit_session,
+                                        item_id,
+                                        watch_reason=(new_reason or "").strip(),
+                                    )
+                                    st.session_state.pop(f"wl_edit_showing_{item.id}", None)
+                                    _set_flash(
+                                        "success",
+                                        t("watchlist.edit.success", ticker=tkr),
+                                    )
+                                    st.rerun()
+                                except Exception as exc:
+                                    st.error(t("watchlist.edit.failed", error=str(exc)))
+                                finally:
+                                    edit_session.close()
                         with col_y:
                             if st.form_submit_button(
-                                t("watchlist.convert.cancel"), type="secondary"
+                                t("watchlist.edit.cancel"), type="secondary"
                             ):
-                                st.session_state.pop(
-                                    f"wl_convert_showing_{item.id}", None
-                                )
+                                st.session_state.pop(f"wl_edit_showing_{item.id}", None)
                                 st.rerun()
 
-            with cc:
+            with cb:
                 if st.button(
                     t("watchlist.action.delete"), key=f"wl_delete_{item.id}"
                 ):

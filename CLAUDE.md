@@ -51,7 +51,7 @@ agent/        LangGraph ReAct loop, system prompt, LangChain tools, session trac
 app/          Streamlit dashboard (main.py + components/ + views/)
 app/i18n.py   English / Chinese UI strings, selected through top-banner EN/CN toggle
 app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_toggle()
-app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Recommendations → Jobs → History
+app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Watchlist → Recommendations → Jobs → History
 deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
 scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly trade review
@@ -123,7 +123,7 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 ### Localization
 
-Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh` (toggled by the top-banner EN/CN button); agent-generated reasoning and user-entered names are not translated. Sidebar nav keys are stable (`dashboard`/`holdings`/`recommendations`/`jobs`/`history`) so switching language does not reset the current page.
+Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh` (toggled by the top-banner EN/CN button); agent-generated reasoning and user-entered names are not translated. Sidebar nav keys are stable (`dashboard`/`holdings`/`watchlist`/`recommendations`/`jobs`/`history`) so switching language does not reset the current page.
 
 ### Ask Agent is a popover
 
@@ -137,9 +137,17 @@ Streamlit auto-discovers `pages/` next to the entry script and shows top/sidebar
 
 Do **not** inject theme CSS with `st.markdown` (strips `<style>`) or bare `st.html` (reserves a huge empty layout slot). Use `inject_cyberpunk_theme()` in `app/styles/theme.py`: a height-0 `components.html` iframe writes a `<style>` tag into `window.parent.document.head` and hides its own host node.
 
+### Mobile sidebar
+
+On screens up to 768px, the native Streamlit sidebar remains collapsed until the top-left control is tapped. The CSS drawer rules must target only `section[data-testid="stSidebar"][aria-expanded="true"]`: applying a full viewport width to the collapsed sidebar retains Streamlit’s negative `translateX`, leaving a sidebar sliver and clipping the main content. An expanded sidebar is a fixed drawer capped at 90vw; the main area keeps its full width.
+
 ### Localization toggle
 
-Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). Clicking sets `?locale=en|zh` and reloads; `app/main.py` syncs that into `st.session_state["locale"]`.
+Language is toggled by a fixed **EN** / **CN** button in the top-right banner (`inject_locale_toggle` in `app/styles/theme.py`). The button is mounted on `document.body` with `pointer-events: auto` — Streamlit's `stHeader` uses `pointer-events: none` when `toolbarMode=minimal`, which would otherwise swallow clicks. Clicking sets `?locale=en|zh` and reloads; `app/main.py` syncs that into `st.session_state["locale"]`.
+
+### Watchlist
+
+**Watchlist** page tracks tickers before entry. Cards show reason / target range; actions are **Edit** (reason only) and **Delete**. Add form covers ticker, market, priority, reason, and optional target prices.
 
 ### Hide Streamlit Deploy / settings menu
 

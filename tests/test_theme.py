@@ -25,3 +25,15 @@ def test_build_theme_html_wraps_style():
     html = build_theme_html(":root{--cp-bg:#05050a;}")
     assert html.startswith("<style>")
     assert html.rstrip().endswith("</style>")
+
+
+def test_mobile_sidebar_layout_only_applies_when_expanded():
+    """A collapsed sidebar must not retain the full-width drawer geometry."""
+    css = load_cyberpunk_css()
+    expanded_selector = 'section[data-testid="stSidebar"][aria-expanded="true"]'
+
+    assert expanded_selector in css
+    mobile_sidebar_start = css.index("/* Mobile sidebar drawer")
+    mobile_sidebar_end = css.index("/* EN/CN toggle", mobile_sidebar_start)
+    mobile_sidebar_css = css[mobile_sidebar_start:mobile_sidebar_end]
+    assert '[data-testid="stSidebar"] {' not in mobile_sidebar_css
