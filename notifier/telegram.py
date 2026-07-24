@@ -89,7 +89,7 @@ def _md_to_telegram_html(text: str) -> str:
 
 
 def _send_message(text: str):
-    """Send a single Telegram message with HTML parse mode."""
+    """Send a single Telegram message, falling back to plain-text on HTML parse error."""
     import requests
 
     url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -101,7 +101,23 @@ def _send_message(text: str):
     }
     resp = requests.post(url, json=payload, timeout=10)
     if resp.status_code != 200:
-        logger.error(f"Telegram send failed: {resp.status_code} {resp.text}")
+        resp_data = resp.json()
+        # If HTML parse error, retry as plain text so the message still gets delivered.
+        if resp.status_code == 400 and "can't parse entities" in resp_data.get("description", ""):
+            logger.warning(
+                "Telegram HTML parse failed (unbalanced tags), retrying as plain text. "
+                f"Error: {resp.text}"
+            )
+            payload["parse_mode"] = ""
+            resp = requests.post(url, json=payload, timeout=10)
+            if resp.status_code != 200:
+                logger.error(f"Telegram plain-text retry also failed: {resp.status_code} {resp.text}")
+                return
+        else:
+            logger.error(f"Telegram send failed: {resp.status_code} {resp.text}")
+            return
+
+    logger.info("Telegram message sent OK.")
 
 
 def notify(message: str):
