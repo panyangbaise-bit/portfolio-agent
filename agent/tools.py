@@ -370,18 +370,28 @@ def remove_from_watchlist(ticker: str) -> dict:
 def search_ticker_news(ticker: str, days: int = 7) -> dict:
     """搜索与一个或多个标的相关的最近新闻。支持批量模式。
 
-    单个: search_ticker_news(ticker="AAPL", days=7)
-    批量: search_ticker_news(ticker="AAPL,TSLA,MSFT", days=1)
+    底层为中文财经媒体搜索：优先传入中文关键词（公司中文名/常用称谓），
+    英文 ticker 或纯数字代码通常搜不到结果。
+
+    推荐: search_ticker_news(ticker="苹果", days=7)
+    批量: search_ticker_news(ticker="苹果,特斯拉,英伟达", days=1)
+    避免: search_ticker_news(ticker="AAPL")  — 英文代码常返回空
 
     Args:
-        ticker: 单个标的代码，或多个逗号分隔（批量）
+        ticker: 搜索关键词（优先中文名），或多个逗号分隔（批量）
         days: 搜索最近几天的新闻，默认7天
 
     Returns:
         单个时: {"ticker": str, "results": list[dict]}
         多个时: {"batch": true, "results": {ticker: list[dict], ...}}
     """
-    tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
+    # Preserve original casing for CJK keywords; only normalize ASCII tokens.
+    tickers = []
+    for t in str(ticker).split(","):
+        t = t.strip()
+        if not t:
+            continue
+        tickers.append(t.upper() if t.isascii() else t)
     if not tickers:
         return {"error": "no valid tickers"}
 
