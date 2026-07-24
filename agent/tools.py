@@ -367,17 +367,35 @@ def remove_from_watchlist(ticker: str) -> dict:
 # ── News Tools (continued) ────────────────────────────────
 
 @tool
-def search_ticker_news(ticker: str, days: int = 7) -> list[dict]:
-    """搜索与某个标的相关的最近新闻。
+def search_ticker_news(ticker: str, days: int = 7) -> dict:
+    """搜索与一个或多个标的相关的最近新闻。支持批量模式。
+
+    单个: search_ticker_news(ticker="AAPL", days=7)
+    批量: search_ticker_news(ticker="AAPL,TSLA,MSFT", days=1)
 
     Args:
-        ticker: 标的代码
+        ticker: 单个标的代码，或多个逗号分隔（批量）
         days: 搜索最近几天的新闻，默认7天
 
     Returns:
-        list[dict]: 新闻列表，每项含 title, url, summary, published_at
+        单个时: {"ticker": str, "results": list[dict]}
+        多个时: {"batch": true, "results": {ticker: list[dict], ...}}
     """
-    return news_adapter.search_ticker_news(ticker, days)
+    tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
+    if not tickers:
+        return {"error": "no valid tickers"}
+
+    if len(tickers) == 1:
+        results = news_adapter.search_ticker_news(tickers[0], days)
+        return {"ticker": tickers[0], "results": results}
+
+    result_map = {}
+    for t in tickers:
+        try:
+            result_map[t] = news_adapter.search_ticker_news(t, days)
+        except Exception as e:
+            result_map[t] = {"error": str(e)}
+    return {"batch": True, "results": result_map}
 
 
 @tool

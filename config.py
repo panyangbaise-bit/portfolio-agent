@@ -32,7 +32,7 @@ class Config:
 
     # Scheduler / agent run limits
     # Overall LangGraph invoke budget (multi-round tools + LLM). Must be >= DEEPSEEK_TIMEOUT.
-    AGENT_RUN_TIMEOUT: float = float(os.environ.get("AGENT_RUN_TIMEOUT", "900"))
+    AGENT_RUN_TIMEOUT: float = float(os.environ.get("AGENT_RUN_TIMEOUT", "1200"))
     # Default news poll: 08:00–22:00 Asia/Shanghai every 2 hours (editable on Jobs page).
     # 5-field crontab: minute hour day month day_of_week
     DEFAULT_NEWS_CRONTAB: str = os.environ.get("NEWS_CRONTAB", "0 8-22/2 * * *")
