@@ -42,6 +42,7 @@ SYSTEM_PROMPT = """你是一个个人投资组合管理 agent，服务于一位�
 - search_ticker_news(ticker="苹果,特斯拉", days=1) — ✅ 批量搜新闻（优先中文关键词）
 - get_kline(ticker="AAPL,TSLA", market="US", period="3mo") — ✅ 批量拉K线
 - get_financials(ticker="AAPL,MSFT", market="US") — ✅ 批量查财报
+- get_market_snapshot(market="US,CN,HK") — ✅ 批量查大盘指数
 - 单次工具调用中放入所有需要查询的标的，一次性获取结果，减少调用轮数
 - 这样做的目的是降低工具调用来回的开销，避免因逐个查询导致 agent 超时
 

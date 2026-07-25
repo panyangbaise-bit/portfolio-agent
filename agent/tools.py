@@ -241,16 +241,34 @@ def get_fund_info(ticker: str, top_constituents: int = 20) -> dict:
 
 @tool
 def get_market_snapshot(market: str) -> dict:
-    """获取市场大盘指数概览。
+    """获取市场大盘指数概览。支持单个和批量查询。
+
+    单个: get_market_snapshot(market="US")
+    批量: get_market_snapshot(market="US,CN,HK")
 
     Args:
         market: 市场代码 — US (S&P 500), CN (上证指数), HK (恒生指数), CRYPTO (总市值)
+                多个用逗号分隔
 
     Returns:
-        dict: 含 index_name, current, change_pct 等
+        单个时: {index_name, current, change_pct, ...}
+        多个时: {"batch": true, "results": {market: {...}, ...}}
     """
-    adapter = adapter_registry.get(market)
-    return adapter.get_market_snapshot()
+    markets = [m.strip().upper() for m in str(market).split(",") if m.strip()]
+    if not markets:
+        return {"error": "no valid markets"}
+    if len(markets) == 1:
+        adapter = adapter_registry.get(markets[0])
+        return adapter.get_market_snapshot()
+    results = {}
+    for mk in markets:
+        try:
+            results[mk] = adapter_registry.get(mk).get_market_snapshot()
+        except ValueError:
+            results[mk] = {"error": f"no adapter for market: {mk}"}
+        except Exception as e:
+            results[mk] = {"error": str(e)}
+    return {"batch": True, "results": results}
 
 
 # ── News Tools ────────────────────────────────────────────
