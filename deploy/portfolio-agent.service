@@ -9,11 +9,7 @@ User=__SERVICE_USER__
 Group=__SERVICE_GROUP__
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=-__APP_DIR__/.env
-ExecStart=__APP_DIR__/.venv/bin/streamlit run app/main.py \
-  --server.port 8501 \
-  --server.address 0.0.0.0 \
-  --server.headless true \
-  --browser.gatherUsageStats false
+ExecStart=__APP_DIR__/.venv/bin/python3 __APP_DIR__/server.py
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

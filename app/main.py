@@ -40,10 +40,21 @@ NAV_ITEMS = [
 
 
 def init():
-    """Initialize subsystems once per server process (not per page refresh)."""
+    """Initialize subsystems once per server process (not per page refresh).
+
+    When launched via server.py bootstrap runs before Streamlit; on page load
+    we detect that and skip. When launched directly via `streamlit run` (dev),
+    bootstrap happens here on first page access.
+    """
     global _PROCESS_BOOTSTRAPPED
     with _PROCESS_LOCK:
         if _PROCESS_BOOTSTRAPPED:
+            return
+
+        # server.py already bootstrapped in this process? skip init.
+        if registry.markets:
+            logger.info("Bootstrap already done by server.py, skipping.")
+            _PROCESS_BOOTSTRAPPED = True
             return
 
         init_db()
