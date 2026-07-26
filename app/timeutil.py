@@ -33,8 +33,12 @@ def format_display_time(
     return to_display_tz(dt).strftime(fmt)
 
 
+CN_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
 def format_now_for_agent() -> str:
     """Wall-clock block appended to the agent system prompt."""
     now = datetime.now(app_zone())
     stamp = now.strftime("%Y-%m-%d %H:%M")
-    return f"## 当前时间\n{stamp} ({config.APP_TIMEZONE})"
+    wd = CN_WEEKDAYS[now.weekday()]
+    return f"## 当前时间\n{stamp} {wd} ({config.APP_TIMEZONE})"
