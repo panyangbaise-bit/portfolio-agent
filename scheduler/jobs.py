@@ -15,6 +15,7 @@ from agent.core import (
     poll_news_for_portfolio,
 )
 from notifier.telegram import notify
+from scheduler.triggers import is_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ def _finish_job_run(run_id: int, status: str, details: str = None):
 
 def job_after_market_us():
     run_id = _start_job_run("us_after_market", "美股盘后分析")
+    if not is_trading_day("US"):
+        logger.info("US market closed (weekend), skipping analysis.")
+        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
+        return
     logger.info("Starting US after-market analysis...")
     try:
         result = run_after_market_analysis("US")
@@ -50,6 +55,10 @@ def job_after_market_us():
 
 def job_after_market_cn():
     run_id = _start_job_run("cn_after_market", "A股盘后分析")
+    if not is_trading_day("CN"):
+        logger.info("CN market closed (weekend), skipping analysis.")
+        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
+        return
     logger.info("Starting CN after-market analysis...")
     try:
         result = run_after_market_analysis("CN")
@@ -63,6 +72,10 @@ def job_after_market_cn():
 
 def job_after_market_hk():
     run_id = _start_job_run("hk_after_market", "港股盘后分析")
+    if not is_trading_day("HK"):
+        logger.info("HK market closed (weekend), skipping analysis.")
+        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
+        return
     logger.info("Starting HK after-market analysis...")
     try:
         result = run_after_market_analysis("HK")
@@ -76,6 +89,7 @@ def job_after_market_hk():
 
 def job_after_market_crypto():
     run_id = _start_job_run("crypto_daily", "Crypto每日分析")
+    # Crypto market operates 24/7 — no weekend skip
     logger.info("Starting crypto daily analysis...")
     try:
         result = run_after_market_analysis("CRYPTO")
