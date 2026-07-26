@@ -88,6 +88,30 @@ def _md_to_telegram_html(text: str) -> str:
     return text
 
 
+def _escape_unsafe_html(text: str) -> str:
+    """Escape <, >, & outside of valid Telegram HTML tags.
+
+    After _md_to_telegram_html() converts markdown to <b>, <i>, etc.,
+    the output may still contain raw < characters (like "<2%") that
+    Telegram's parser misinterprets as HTML tags. This function escapes
+    those dangerous characters while leaving valid tags untouched.
+    """
+    valid = r"b|i|u|s|tg-spoiler|a|code|pre"
+    tag_re = re.compile(r"<(/?)(?:" + valid + r")(?:\s[^>]*)?>", re.IGNORECASE)
+
+    result = []
+    last_end = 0
+    for match in tag_re.finditer(text):
+        before = text[last_end:match.start()]
+        result.append(before.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+        result.append(match.group())
+        last_end = match.end()
+    remaining = text[last_end:]
+    result.append(remaining.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    return "".join(result)
+
+
 def _send_message(text: str):
     """Send a single Telegram message, falling back to plain-text on HTML parse error."""
     import requests
@@ -127,6 +151,7 @@ def notify(message: str):
         return
 
     html = _md_to_telegram_html(message)
+    html = _escape_unsafe_html(html)
 
     try:
         if len(html) <= MAX_MESSAGE_LENGTH:
