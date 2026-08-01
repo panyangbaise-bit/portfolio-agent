@@ -1,10 +1,12 @@
 import streamlit as st
 from app.i18n import t
 from db.repository import get_session, get_open_holdings, get_pending_recommendations
+from app.components.currency import fetch_cny_rates
 from app.components.price_fetcher import fetch_prices_batch
+from app.components.portfolio_valuation import calculate_portfolio_totals
 
 
-def render_kpi_cards(holdings=None, prices=None):
+def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
     """Render KPI cards and return the shared holdings/price snapshot."""
     session = get_session()
     try:
@@ -16,45 +18,45 @@ def render_kpi_cards(holdings=None, prices=None):
 
     if prices is None:
         prices = fetch_prices_batch(holdings)
-    total_market_value = 0.0
-    total_cost = 0.0
-    has_live_data = False
-
-    for h in holdings:
-        cost = h.shares * h.cost_basis
-        total_cost += cost
-        price = prices.get((h.market, h.ticker))
-        if price is not None:
-            total_market_value += h.shares * price
-            has_live_data = True
-        else:
-            total_market_value += cost
-
-    pnl = total_market_value - total_cost
-    pnl_pct = (pnl / total_cost * 100) if total_cost else 0
+    if cny_rates is None:
+        markets = tuple(sorted({h.market for h in holdings}))
+        cny_rates = fetch_cny_rates(markets)
+    totals = calculate_portfolio_totals(holdings, prices, cny_rates)
 
     cols = st.columns(4)
     with cols[0]:
-        st.metric(
-            t("kpi.total_value"),
-            f"¥{total_market_value:,.2f}",
-            delta=f"+¥{pnl:,.2f}" if pnl >= 0 else f"-¥{abs(pnl):,.2f}",
-            delta_color="normal",
-        )
+        if totals is None:
+            st.metric(t("kpi.total_value"), "—")
+        else:
+            pnl = totals["pnl"]
+            st.metric(
+                t("kpi.total_value"),
+                f"¥{totals['market_value']:,.2f}",
+                delta=f"+¥{pnl:,.2f}" if pnl >= 0 else f"-¥{abs(pnl):,.2f}",
+                delta_color="normal",
+            )
     with cols[1]:
-        label = t("kpi.total_pnl") if has_live_data else t("kpi.total_pnl_cost")
-        if pnl_pct > 0:
+        if totals is None:
+            label = t("kpi.total_pnl")
+            pnl_pct = None
+        else:
+            label = t("kpi.total_pnl") if totals["has_live_data"] else t("kpi.total_pnl_cost")
+            pnl_pct = totals["pnl_pct"]
+        if pnl_pct is not None and pnl_pct > 0:
             tone = "gain"
-        elif pnl_pct < 0:
+        elif pnl_pct is not None and pnl_pct < 0:
             tone = "loss"
         else:
             tone = "flat"
+        value = f"{pnl_pct:+.2f}%" if pnl_pct is not None else "—"
         st.html(
             '<div class="cp-pnl-metric">'
             '<div class="label">' + label + '</div>'
-            '<div class="value ' + tone + '">' + f"{pnl_pct:+.2f}%" + '</div>'
+            '<div class="value ' + tone + '">' + value + '</div>'
             '</div>'
         )
+    if totals is None:
+        st.warning(t("kpi.fx_unavailable"))
     with cols[2]:
         st.metric(t("kpi.pending_recs"), str(len(pending)) + (" ⚠️" if len(pending) > 0 else ""))
     with cols[3]:

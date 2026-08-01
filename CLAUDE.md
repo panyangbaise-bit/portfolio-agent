@@ -95,7 +95,11 @@ Agent tool `get_fund_info` (CN only) returns overview via `fund_overview_em` (tr
 
 ### Price snapshots and live fetching
 
-`app/components/price_fetcher.py` uses `@st.cache_data(ttl=60)`. Dashboard first renders `price_cache`; missing values are persisted from cost basis, so Price / P&L / Mkt Value survive restart and are never blank. A 1-second fragment refreshes holdings concurrently with a 2-second deadline; successful live values replace that day's fallback snapshot.
+`app/components/price_fetcher.py` uses `@st.cache_data(ttl=60)`. Dashboard first renders `price_cache`; missing values are persisted from cost basis, so native Price / P&L inputs survive restart. A 1-second fragment refreshes holdings concurrently with a 2-second deadline; successful live values replace that day's fallback snapshot.
+
+### Currency conversion
+
+`app/components/currency.py` gets USD/CNY and HKD/CNY from ExchangeRate-API, caches them for 60 seconds, and reuses the most recent successful process-local rate after a transient failure. Dashboard Market Value and KPI totals are CNY; Cost and Price retain their native symbols (CN `¥`, US/Crypto `$`, HK `HK$`). If an FX rate is unavailable with no fallback, foreign Market Value and CNY KPIs show unavailable rather than treating the original currency amount as RMB.
 
 ### CoinGecko timeout
 

@@ -4,6 +4,7 @@ import time
 
 import streamlit as st
 from app.i18n import t
+from app.components.currency import fetch_cny_rates
 from app.components.kpi_cards import render_kpi_cards
 from app.components.holdings_table import render_holdings_table
 from app.components.price_fetcher import (
@@ -60,9 +61,11 @@ def render_portfolio_snapshot():
         prices = overlay_live_prices(cached_prices, live_prices)
         st.session_state["portfolio_live_refresh_at"] = now
 
-    render_kpi_cards(holdings=holdings, prices=prices)
+    markets = tuple(sorted({holding.market for holding in holdings}))
+    cny_rates = fetch_cny_rates(markets)
+    render_kpi_cards(holdings=holdings, prices=prices, cny_rates=cny_rates)
     st.divider()
-    render_holdings_table(holdings=holdings, prices=prices)
+    render_holdings_table(holdings=holdings, prices=prices, cny_rates=cny_rates)
     st.session_state["portfolio_snapshot_rendered"] = True
 
 
