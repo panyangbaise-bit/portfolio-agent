@@ -16,7 +16,11 @@ from adapters.us_market import USMarketAdapter
 from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler, stop_scheduler
-from notifier.telegram import send_welcome
+from notifier.telegram import (
+    send_welcome,
+    start_callback_poller,
+    stop_callback_poller,
+)
 from app.auth import require_auth
 from app.i18n import t
 from app.styles.theme import inject_cyberpunk_theme, inject_locale_toggle
@@ -72,6 +76,7 @@ def init():
 
         # True process startup only — guarded again inside send_welcome().
         send_welcome()
+        start_callback_poller()
         _PROCESS_BOOTSTRAPPED = True
         logger.info("Process bootstrap complete.")
 
@@ -119,3 +124,4 @@ with open(page_path) as f:
 
 import atexit
 atexit.register(stop_scheduler)
+atexit.register(stop_callback_poller)

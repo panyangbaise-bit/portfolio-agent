@@ -29,6 +29,8 @@ class Config:
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
+    TELEGRAM_POLL_TIMEOUT: int = int(os.environ.get("TELEGRAM_POLL_TIMEOUT", "30"))
+    TELEGRAM_POLL_MAX_BACKOFF: int = int(os.environ.get("TELEGRAM_POLL_MAX_BACKOFF", "60"))
 
     # Scheduler / agent run limits
     # Overall LangGraph invoke budget (multi-round tools + LLM). Must be >= DEEPSEEK_TIMEOUT.

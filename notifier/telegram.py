@@ -3,11 +3,13 @@
 import logging
 import re
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from config import config
 from app.timeutil import format_display_time
+from db.repository import apply_recommendation_action, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,8 @@ MAX_MESSAGE_LENGTH = 4000
 # Process-lifetime guard — Streamlit refreshes reset session_state but not this.
 _welcome_sent = False
 _welcome_lock = threading.Lock()
+_callback_poller = None
+_callback_poller_lock = threading.Lock()
 
 
 def _is_configured() -> bool:
@@ -112,7 +116,7 @@ def _escape_unsafe_html(text: str) -> str:
     return "".join(result)
 
 
-def _send_message(text: str):
+def _send_message(text: str, reply_markup: Optional[dict] = None):
     """Send a single Telegram message, falling back to plain-text on HTML parse error."""
     import requests
 
@@ -123,6 +127,8 @@ def _send_message(text: str):
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     resp = requests.post(url, json=payload, timeout=10)
     if resp.status_code != 200:
         resp_data = resp.json()
@@ -201,6 +207,144 @@ def send_urgent_recommendation(ticker: str, action: str, reasoning: str, confide
         f"<b>理由：</b>\n{reasoning}"
     )
     notify(msg)
+
+
+def send_recommendation(recommendation):
+    """Send a pending recommendation with Telegram Accept/Dismiss buttons."""
+    if not _is_configured():
+        logger.debug("Telegram not configured, skipping recommendation.")
+        return
+
+    action_emoji = {"buy_add": "🟢", "reduce": "🔴", "hold": "🟡", "watch": "👀"}
+    emoji = action_emoji.get(recommendation.action, "ℹ️")
+    message = (
+        f"{emoji} <b>投资建议</b>\n\n"
+        f"<b>标的：</b>{recommendation.ticker}\n"
+        f"<b>操作：</b>{recommendation.action}\n"
+        f"<b>紧急度：</b>{recommendation.urgency}\n"
+        f"<b>置信度：</b>{recommendation.confidence:.0%}\n\n"
+        f"<b>理由：</b>\n{recommendation.reasoning}"
+    )
+    reply_markup = {
+        "inline_keyboard": [[
+            {"text": "✅ Accept", "callback_data": f"rec:{recommendation.id}:accept"},
+            {"text": "❌ Dismiss", "callback_data": f"rec:{recommendation.id}:dismiss"},
+        ]],
+    }
+    _send_message(
+        _escape_unsafe_html(_md_to_telegram_html(message)),
+        reply_markup=reply_markup,
+    )
+
+
+class TelegramCallbackPoller:
+    """Long-poll Telegram callback queries on a daemon thread."""
+
+    def __init__(self):
+        self._stop_event = threading.Event()
+        self._thread = None
+        self._offset = None
+
+    def start(self):
+        if not _is_configured() or self._thread and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(
+            target=self._run, name="telegram-callback-poller", daemon=True
+        )
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def _answer_callback(self, callback_id: str, text: str, show_alert: bool = False):
+        import requests
+
+        requests.post(
+            f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/answerCallbackQuery",
+            json={
+                "callback_query_id": callback_id,
+                "text": text,
+                "show_alert": show_alert,
+            },
+            timeout=10,
+        )
+
+    def process_update(self, update: dict):
+        callback = update.get("callback_query") or {}
+        callback_id = callback.get("id")
+        if not callback_id:
+            return
+
+        chat_id = callback.get("message", {}).get("chat", {}).get("id")
+        if str(chat_id) != str(config.TELEGRAM_CHAT_ID):
+            self._answer_callback(callback_id, "Unauthorized callback.", show_alert=True)
+            return
+
+        match = re.fullmatch(r"rec:(\d+):(accept|dismiss)", callback.get("data") or "")
+        if not match:
+            self._answer_callback(callback_id, "Invalid recommendation action.", show_alert=True)
+            return
+
+        recommendation_id = int(match.group(1))
+        action = match.group(2)
+        session = get_session()
+        try:
+            result = apply_recommendation_action(session, recommendation_id, action)
+        finally:
+            session.close()
+
+        if result["status"] == "applied":
+            text = "Recommendation accepted." if action == "accept" else "Recommendation dismissed."
+            self._answer_callback(callback_id, text)
+        elif result["status"] == "already_handled":
+            self._answer_callback(callback_id, "Recommendation was already handled.")
+        else:
+            self._answer_callback(callback_id, "Recommendation is no longer available.", show_alert=True)
+
+    def _run(self):
+        import requests
+
+        delay = 1
+        max_delay = getattr(config, "TELEGRAM_POLL_MAX_BACKOFF", 60)
+        poll_timeout = getattr(config, "TELEGRAM_POLL_TIMEOUT", 30)
+        while not self._stop_event.is_set():
+            try:
+                params = {"timeout": poll_timeout}
+                if self._offset is not None:
+                    params["offset"] = self._offset
+                response = requests.get(
+                    f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/getUpdates",
+                    params=params,
+                    timeout=poll_timeout + 10,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not payload.get("ok"):
+                    raise ValueError("Telegram getUpdates returned not ok")
+                delay = 1
+                for update in payload.get("result", []):
+                    self._offset = update["update_id"] + 1
+                    self.process_update(update)
+            except Exception as exc:
+                logger.warning("Telegram callback poll failed: %s", exc)
+                self._stop_event.wait(delay)
+                delay = min(delay * 2, max_delay)
+
+
+def start_callback_poller():
+    """Start one process-wide callback poller when Telegram is configured."""
+    global _callback_poller
+    with _callback_poller_lock:
+        if _callback_poller is None:
+            _callback_poller = TelegramCallbackPoller()
+        _callback_poller.start()
+    return _callback_poller
+
+
+def stop_callback_poller():
+    """Request shutdown of the process-wide callback poller."""
+    if _callback_poller is not None:
+        _callback_poller.stop()
 
 
 def discover_chat_id() -> Optional[str]:

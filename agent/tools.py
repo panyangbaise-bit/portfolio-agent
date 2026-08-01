@@ -18,6 +18,17 @@ from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
 
 
+def _notify_recommendation(recommendation) -> None:
+    """Deliver a saved pending recommendation without disrupting agent work."""
+    try:
+        from notifier.telegram import send_recommendation
+        send_recommendation(recommendation)
+    except Exception:
+        # A notification outage must not turn a successfully saved
+        # recommendation into an agent-tool failure.
+        pass
+
+
 # ── Portfolio Tools ───────────────────────────────────────
 
 @tool
@@ -572,6 +583,7 @@ def save_recommendation(
                     ticker=r_ticker, action=r_action, reasoning=r_reasoning,
                     confidence=r_confidence, urgency=r_urgency,
                 )
+                _notify_recommendation(rec)
                 saved_count += 1
                 results.append({"ticker": rec.ticker, "status": "saved",
                                 "recommendation_id": rec.id, "action": rec.action})
@@ -616,6 +628,7 @@ def save_recommendation(
             ticker=ticker, action=action_n, reasoning=reasoning,
             confidence=confidence, urgency=urgency_n,
         )
+        _notify_recommendation(rec)
         return {
             "status": "saved",
             "recommendation_id": rec.id,
