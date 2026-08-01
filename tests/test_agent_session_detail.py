@@ -1,5 +1,9 @@
 """Tests for agent session detail reads and tool-result truncation."""
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+
+from app.components import analysis_table
 from agent.graph import _truncate_result
 from db.models import Base
 from db.repository import (
@@ -72,3 +76,64 @@ def test_list_analysis_runs_filters_by_job_id():
         assert us_only[0]["tool_count"] == 0
     finally:
         db.close()
+
+
+def test_tool_call_expanders_are_collapsed_by_default(monkeypatch):
+    expanded_states = []
+
+    class FakeStreamlit:
+        def subheader(self, *args, **kwargs):
+            return None
+
+        def selectbox(self, *args, **kwargs):
+            options = kwargs["options"]
+            return options[0] if len(options) == 1 else options[1]
+
+        def dataframe(self, *args, **kwargs):
+            return None
+
+        def markdown(self, *args, **kwargs):
+            return None
+
+        def caption(self, *args, **kwargs):
+            return None
+
+        def expander(self, title, expanded):
+            expanded_states.append(expanded)
+            return nullcontext()
+
+        def code(self, *args, **kwargs):
+            return None
+
+        def text(self, *args, **kwargs):
+            return None
+
+    run = {
+        "id": 1,
+        "started_at": None,
+        "job_id": "us_after_market",
+        "triggered_by": "schedule",
+        "market": "US",
+        "status": "completed",
+        "rec_count": 0,
+        "tool_count": 2,
+        "summary": "",
+    }
+    detail = {
+        "summary": "",
+        "recommendations": [],
+        "tool_calls": [
+            {"tool_name": "get_portfolio", "called_at": None, "params": {}, "result_summary": ""},
+            {"tool_name": "get_price", "called_at": None, "params": {}, "result_summary": ""},
+        ],
+    }
+    monkeypatch.setattr(analysis_table, "st", FakeStreamlit())
+    monkeypatch.setattr(analysis_table, "t", lambda key, **kwargs: key)
+    monkeypatch.setattr(analysis_table, "enum_label", lambda *args: "label")
+    monkeypatch.setattr(analysis_table, "get_session", lambda: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(analysis_table, "list_analysis_runs", lambda *args, **kwargs: [run])
+    monkeypatch.setattr(analysis_table, "get_agent_session_detail", lambda *args: detail)
+
+    analysis_table.render_agent_session_detail()
+
+    assert expanded_states == [False, False]

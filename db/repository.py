@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import create_engine, desc
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from config import config
@@ -507,15 +508,51 @@ def get_recommendation_history(session: Session, ticker: str = None,
 
 # ── User Actions ──────────────────────────────────────────
 
+def apply_recommendation_action(session: Session, recommendation_id: int,
+                                action: str, notes: str = None) -> dict:
+    """Apply an accept/dismiss action once to a pending recommendation."""
+    if action not in ("accept", "dismiss"):
+        return {"status": "invalid_action"}
+
+    rec = session.query(Recommendation).filter(
+        Recommendation.id == recommendation_id
+    ).first()
+    if rec is None:
+        return {"status": "not_found"}
+    if rec.status != "pending":
+        return {"status": "already_handled", "recommendation_status": rec.status}
+
+    user_action = UserAction(
+        recommendation_id=recommendation_id,
+        action=action,
+        notes=notes,
+    )
+    session.add(user_action)
+    rec.status = "acted" if action == "accept" else "dismissed"
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        rec = session.query(Recommendation).filter(
+            Recommendation.id == recommendation_id
+        ).first()
+        return {
+            "status": "already_handled",
+            "recommendation_status": rec.status if rec else None,
+        }
+    return {
+        "status": "applied",
+        "action": action,
+        "recommendation_status": rec.status,
+        "user_action": user_action,
+    }
+
+
 def record_user_action(session: Session, recommendation_id: int,
                        action: str, notes: str = None) -> UserAction:
-    ua = UserAction(recommendation_id=recommendation_id, action=action, notes=notes)
-    session.add(ua)
-    rec = session.query(Recommendation).filter(Recommendation.id == recommendation_id).first()
-    if rec:
-        rec.status = "acted" if action == "accept" else "dismissed"
-    session.commit()
-    return ua
+    """Backward-compatible wrapper for the shared recommendation action path."""
+    result = apply_recommendation_action(session, recommendation_id, action, notes)
+    return result.get("user_action")
 
 
 # ── Watchlist ─────────────────────────────────────────────

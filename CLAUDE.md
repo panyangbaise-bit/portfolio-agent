@@ -42,6 +42,8 @@ Copy `.env.example` to `.env`:
 | `AUTH_MAX_FAILURES` | No | `3` then IP blacklisted |
 | `TELEGRAM_BOT_TOKEN` | No | — (notifications disabled) |
 | `TELEGRAM_CHAT_ID` | No | — |
+| `TELEGRAM_POLL_TIMEOUT` | No | `30` seconds |
+| `TELEGRAM_POLL_MAX_BACKOFF` | No | `60` seconds |
 
 ## Architecture
 
@@ -180,6 +182,10 @@ Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-aver
 ### Telegram welcome is process-once
 
 `send_welcome()` must NOT key off `st.session_state` — Streamlit page refresh clears session state and would spam Telegram. Bootstrap uses a process-level lock in `app/main.py` plus `_welcome_sent` in `notifier/telegram.py`, so the “已启动” message fires only when the server process first starts.
+
+### Telegram recommendation actions
+
+Every newly saved pending Recommendation sends Telegram inline **Accept** / **Dismiss** buttons. `TelegramCallbackPoller` uses low-overhead 30-second long polling in one daemon thread; callbacks must match `TELEGRAM_CHAT_ID` and use idempotent `apply_recommendation_action()` updates, so repeated or old button taps cannot create multiple user actions.
 
 ### Public password gate
 

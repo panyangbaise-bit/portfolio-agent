@@ -9,6 +9,7 @@ notification fire immediately on service start.
 
 import sys
 import logging
+import atexit
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -28,7 +29,11 @@ from adapters.us_market import USMarketAdapter
 from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler
-from notifier.telegram import send_welcome
+from notifier.telegram import (
+    send_welcome,
+    start_callback_poller,
+    stop_callback_poller,
+)
 
 init_db()
 migrate(engine)
@@ -44,7 +49,9 @@ start_scheduler()
 logger.info("Scheduler started.")
 
 send_welcome()
+start_callback_poller()
 logger.info("Bootstrap complete. Launching Streamlit...")
+atexit.register(stop_callback_poller)
 
 # ── Launch Streamlit in the same process ──
 

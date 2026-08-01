@@ -282,7 +282,7 @@ def render_agent_session_detail(limit: int = 50):
 
     for i, call in enumerate(tools, start=1):
         title = f"{i}. {call['tool_name']} · {_fmt_time(call['called_at'])}"
-        with st.expander(title, expanded=(i == 1)):
+        with st.expander(title, expanded=False):
             st.markdown(f"**{t('col.params')}**")
             st.code(_format_params(call.get("params")), language="json")
             st.markdown(f"**{t('col.result')}**")

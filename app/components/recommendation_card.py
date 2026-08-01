@@ -1,7 +1,11 @@
 import streamlit as st
 from app.i18n import enum_label, t
 from app.timeutil import format_display_time
-from db.repository import get_session, get_pending_recommendations, record_user_action
+from db.repository import (
+    apply_recommendation_action,
+    get_session,
+    get_pending_recommendations,
+)
 
 
 def render_recommendations():
@@ -44,7 +48,7 @@ def render_recommendations():
                 if st.button(t("rec.accept"), key=f"accept_{rec.id}"):
                     db = get_session()
                     try:
-                        record_user_action(db, rec.id, "accept")
+                        apply_recommendation_action(db, rec.id, "accept")
                     finally:
                         db.close()
                     st.rerun()
@@ -52,7 +56,7 @@ def render_recommendations():
                 if st.button(t("rec.dismiss"), key=f"dismiss_{rec.id}"):
                     db = get_session()
                     try:
-                        record_user_action(db, rec.id, "dismiss")
+                        apply_recommendation_action(db, rec.id, "dismiss")
                     finally:
                         db.close()
                     st.rerun()

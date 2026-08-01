@@ -103,3 +103,36 @@ def test_save_recommendation_skips_unchanged(monkeypatch):
     })
     assert result["status"] == "skipped_unchanged"
     assert result["existing_id"] is not None
+
+
+def test_save_recommendation_notifies_each_new_pending_recommendation(monkeypatch):
+    from db import repository as repo
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    sent = []
+
+    def _get_session():
+        return Session(engine)
+
+    monkeypatch.setattr(repo, "get_session", _get_session)
+    monkeypatch.setattr("agent.tools.get_session", _get_session)
+    monkeypatch.setattr("agent.tools._notify_recommendation", lambda rec: sent.append(rec.id))
+
+    db = _get_session()
+    try:
+        sid = _agent_session(db)
+    finally:
+        db.close()
+
+    result = save_recommendation.invoke({
+        "ticker": "MSFT",
+        "action": "buy_add",
+        "reasoning": "Strong earnings trend",
+        "confidence": 0.8,
+        "urgency": "medium",
+        "session_id": sid,
+    })
+
+    assert result["status"] == "saved"
+    assert sent == [result["recommendation_id"]]
