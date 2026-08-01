@@ -1,7 +1,5 @@
 """Main dashboard — KPI overview, holdings snapshot, ask-agent."""
 
-import time
-
 import streamlit as st
 from app.i18n import t
 from app.components.currency import fetch_cny_rates
@@ -38,35 +36,39 @@ with hdr_r:
             else:
                 st.warning(t("ask_agent.empty"))
 
-@st.fragment(run_every=1)
-def render_portfolio_snapshot():
-    """Render cached values first, then refresh live prices on later ticks."""
+def _load_open_holdings():
+    """Load the current open holdings from the database."""
     session = get_session()
     try:
-        holdings = get_open_holdings(session)
+        return get_open_holdings(session)
     finally:
         session.close()
 
+
+@st.fragment(run_every=60)
+def render_live_kpi_snapshot():
+    """Refresh only portfolio KPIs without replacing the holdings table."""
+    holdings = _load_open_holdings()
     cached_prices = load_cached_prices(holdings)
     cached_prices = persist_cost_basis_fallbacks(holdings, cached_prices)
-    now = time.monotonic()
-    initial_rendered = st.session_state.get("portfolio_snapshot_rendered", False)
-    last_refresh = st.session_state.get("portfolio_live_refresh_at", 0.0)
-    should_refresh = initial_rendered and now - last_refresh >= 60
-
-    prices = cached_prices
-    if should_refresh:
-        live_prices = fetch_prices_batch(holdings)
-        save_live_prices(live_prices)
-        prices = overlay_live_prices(cached_prices, live_prices)
-        st.session_state["portfolio_live_refresh_at"] = now
-
+    live_prices = fetch_prices_batch(holdings)
+    save_live_prices(live_prices)
+    prices = overlay_live_prices(cached_prices, live_prices)
     markets = tuple(sorted({holding.market for holding in holdings}))
     cny_rates = fetch_cny_rates(markets)
     render_kpi_cards(holdings=holdings, prices=prices, cny_rates=cny_rates)
-    st.divider()
-    render_holdings_table(holdings=holdings, prices=prices, cny_rates=cny_rates)
-    st.session_state["portfolio_snapshot_rendered"] = True
 
 
-render_portfolio_snapshot()
+holdings = _load_open_holdings()
+table_prices = load_cached_prices(holdings)
+table_prices = persist_cost_basis_fallbacks(holdings, table_prices)
+markets = tuple(sorted({holding.market for holding in holdings}))
+table_cny_rates = fetch_cny_rates(markets)
+
+render_live_kpi_snapshot()
+st.divider()
+render_holdings_table(
+    holdings=holdings,
+    prices=table_prices,
+    cny_rates=table_cny_rates,
+)
