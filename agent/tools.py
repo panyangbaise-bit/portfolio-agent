@@ -5,7 +5,8 @@ interface to the LLM. The agent does not know about adapters, markets,
 or databases — it just calls these functions.
 """
 
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Optional, TypeVar
 
 from langchain.tools import tool
 
@@ -16,6 +17,23 @@ from db.repository import (
 )
 from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
+
+T = TypeVar("T")
+R = TypeVar("R")
+
+# Cap workers so a large batch (e.g. fund constituents) does not stampede providers.
+_BATCH_MAX_WORKERS = 12
+
+
+def _map_parallel(items: List[T], fn: Callable[[T], R], max_workers: int = _BATCH_MAX_WORKERS) -> List[R]:
+    """Run ``fn`` over ``items`` concurrently; preserve input order in results."""
+    if not items:
+        return []
+    if len(items) == 1:
+        return [fn(items[0])]
+    workers = min(max_workers, len(items))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(executor.map(fn, items))
 
 
 def _notify_recommendation(recommendation) -> None:
@@ -47,8 +65,7 @@ def get_portfolio() -> list[dict]:
         markets = tuple(sorted({h.market.upper() for h in holdings}))
         cny_rates = get_cny_rates(markets)
 
-        total_value_cny = 0.0
-        values = []
+        priced = []
         missing_fx = []
         for h in holdings:
             market = h.market.upper()
@@ -56,12 +73,22 @@ def get_portfolio() -> list[dict]:
             if rate is None:
                 missing_fx.append(market)
                 continue
+            priced.append((h, market, rate))
+
+        def _fetch_price(item):
+            h, _market, _rate = item
             try:
                 adapter = adapter_registry.get(h.market)
                 price_data = adapter.get_price(h.ticker)
-                current_price = price_data.get("price", 0) or 0
+                return price_data.get("price", 0) or 0
             except Exception:
-                current_price = h.cost_basis
+                return h.cost_basis
+
+        prices = _map_parallel(priced, _fetch_price)
+
+        total_value_cny = 0.0
+        values = []
+        for (h, market, rate), current_price in zip(priced, prices):
             market_value = h.shares * current_price
             market_value_cny = market_value * rate
             total_value_cny += market_value_cny
@@ -190,17 +217,17 @@ def get_price(ticker: str, market: str) -> dict:
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
         return ad.get_price(tickers[0])
-    results = {}
-    for t in tickers:
+
+    def _one(t: str):
         ad = adapters.get(t)
         if ad is None:
-            results[t] = {"error": f"unknown market for {t}"}
-            continue
+            return t, {"error": f"unknown market for {t}"}
         try:
-            results[t] = ad.get_price(t)
+            return t, ad.get_price(t)
         except Exception as e:
-            results[t] = {"error": str(e)}
-    return {"batch": True, "results": results}
+            return t, {"error": str(e)}
+
+    return {"batch": True, "results": dict(_map_parallel(tickers, _one))}
 
 
 @tool
@@ -220,17 +247,17 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
         return ad.get_kline(tickers[0], period)
-    results = {}
-    for t in tickers:
+
+    def _one(t: str):
         ad = adapters.get(t)
         if ad is None:
-            results[t] = []
-            continue
+            return t, []
         try:
-            results[t] = ad.get_kline(t, period)
+            return t, ad.get_kline(t, period)
         except Exception:
-            results[t] = []
-    return {"batch": True, "results": results}
+            return t, []
+
+    return {"batch": True, "results": dict(_map_parallel(tickers, _one))}
 
 
 @tool
@@ -250,17 +277,17 @@ def get_financials(ticker: str, market: str) -> dict:
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
         return ad.get_financials(tickers[0])
-    results = {}
-    for t in tickers:
+
+    def _one(t: str):
         ad = adapters.get(t)
         if ad is None:
-            results[t] = {"error": f"unknown market for {t}"}
-            continue
+            return t, {"error": f"unknown market for {t}"}
         try:
-            results[t] = ad.get_financials(t)
+            return t, ad.get_financials(t)
         except Exception as e:
-            results[t] = {"error": str(e)}
-    return {"batch": True, "results": results}
+            return t, {"error": str(e)}
+
+    return {"batch": True, "results": dict(_map_parallel(tickers, _one))}
 
 
 @tool
@@ -303,15 +330,16 @@ def get_market_snapshot(market: str) -> dict:
     if len(markets) == 1:
         adapter = adapter_registry.get(markets[0])
         return adapter.get_market_snapshot()
-    results = {}
-    for mk in markets:
+
+    def _one(mk: str):
         try:
-            results[mk] = adapter_registry.get(mk).get_market_snapshot()
+            return mk, adapter_registry.get(mk).get_market_snapshot()
         except ValueError:
-            results[mk] = {"error": f"no adapter for market: {mk}"}
+            return mk, {"error": f"no adapter for market: {mk}"}
         except Exception as e:
-            results[mk] = {"error": str(e)}
-    return {"batch": True, "results": results}
+            return mk, {"error": str(e)}
+
+    return {"batch": True, "results": dict(_map_parallel(markets, _one))}
 
 
 # ── News Tools ────────────────────────────────────────────
@@ -460,13 +488,13 @@ def search_ticker_news(ticker: str, days: int = 7) -> dict:
         results = news_adapter.search_ticker_news(tickers[0], days)
         return {"ticker": tickers[0], "results": results}
 
-    result_map = {}
-    for t in tickers:
+    def _one(t: str):
         try:
-            result_map[t] = news_adapter.search_ticker_news(t, days)
+            return t, news_adapter.search_ticker_news(t, days)
         except Exception as e:
-            result_map[t] = {"error": str(e)}
-    return {"batch": True, "results": result_map}
+            return t, {"error": str(e)}
+
+    return {"batch": True, "results": dict(_map_parallel(tickers, _one))}
 
 
 @tool

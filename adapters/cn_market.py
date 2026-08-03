@@ -1,10 +1,36 @@
 from datetime import datetime
+import threading
+import time
 from typing import Optional
 import akshare as ak
 import pandas as pd
 
 from adapters.base import MarketAdapter
 from adapters.cn_index_map import resolve_csi_index_code
+
+# stock_zh_a_spot_em downloads the full A-share board — reuse across parallel
+# get_price calls within a short window (agent batch / fund constituents).
+_SPOT_TTL_SECONDS = 60.0
+_spot_lock = threading.Lock()
+_spot_df: Optional[pd.DataFrame] = None
+_spot_fetched_at: float = 0.0
+
+
+def _get_a_share_spot_df() -> pd.DataFrame:
+    """Thread-safe TTL cache for East Money A-share spot table."""
+    global _spot_df, _spot_fetched_at
+    now = time.monotonic()
+    cached = _spot_df
+    if cached is not None and (now - _spot_fetched_at) < _SPOT_TTL_SECONDS:
+        return cached
+    with _spot_lock:
+        now = time.monotonic()
+        if _spot_df is not None and (now - _spot_fetched_at) < _SPOT_TTL_SECONDS:
+            return _spot_df
+        df = ak.stock_zh_a_spot_em()
+        _spot_df = df
+        _spot_fetched_at = time.monotonic()
+        return df
 
 
 class CNMarketAdapter(MarketAdapter):
@@ -30,7 +56,7 @@ class CNMarketAdapter(MarketAdapter):
             raise
 
     def _get_stock_price(self, ticker: str) -> dict:
-        df = ak.stock_zh_a_spot_em()
+        df = _get_a_share_spot_df()
         row = df[df["代码"] == ticker]
         if row.empty:
             raise ValueError(f"Ticker {ticker} not found in stock list")

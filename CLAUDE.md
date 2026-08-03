@@ -103,6 +103,10 @@ Agent tool `get_fund_info` (CN only) returns overview via `fund_overview_em` (tr
 
 `app/components/price_fetcher.py` uses `@st.cache_data(ttl=60)`. Dashboard first renders `price_cache`; missing values are persisted from cost basis, so native Price / P&L inputs survive restart. Dashboard keeps the holdings table static to avoid visual flicker; an independent 60-second fragment refreshes only the KPI cards, fetching live prices concurrently with a 2-second deadline and persisting successful values for the next full render.
 
+### Agent batch market tools are parallel
+
+Comma-separated batch calls in `agent/tools.py` (`get_price`, `get_kline`, `get_financials`, `get_market_snapshot`, `search_ticker_news`) and `get_portfolio` price enrichment use `ThreadPoolExecutor` (`_map_parallel`, max 12 workers). Without this, a 6-ticker `get_price` or multi-holding `get_portfolio` runs ~N× slowest provider latency (~60s in LangSmith). Dashboard batch fetch stays separate (`fetch_prices_batch` + 2s deadline). CN A-share spot (`stock_zh_a_spot_em`) is process-cached 60s in `adapters/cn_market.py` so parallel CN stock lookups do not re-download the full board each time.
+
 ### Currency conversion
 
 `app/components/currency.py` gets USD/CNY and HKD/CNY from ExchangeRate-API, caches them for 60 seconds, and reuses the most recent successful process-local rate after a transient failure. Dashboard Market Value and KPI totals are CNY; Cost and Price retain their native symbols (CN `¥`, US/Crypto `$`, HK `HK$`). If an FX rate is unavailable with no fallback, foreign Market Value and CNY KPIs show unavailable rather than treating the original currency amount as RMB.
