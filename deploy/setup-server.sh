@@ -69,7 +69,9 @@ pull_app_repo() {
   # they are not tracked). --ff-only fails whenever the server once diverged.
   log "同步 ${dir} → origin/${BRANCH} (reset --hard)"
   git -C "${dir}" fetch --depth 1 origin "${BRANCH}"
-  git -C "${dir}" checkout -B "${BRANCH}" "origin/${BRANCH}"
+  # -f: discard dirty tracked files first. Plain checkout -B aborts when the
+  # server has leftover edits (e.g. a prior partial deploy), blocking reset.
+  git -C "${dir}" checkout -f -B "${BRANCH}" "origin/${BRANCH}"
   git -C "${dir}" reset --hard "origin/${BRANCH}"
   git -C "${dir}" clean -fd --exclude=.venv --exclude=.env --exclude=portfolio.db --exclude=data
   log "当前提交：$(git -C "${dir}" rev-parse --short HEAD)"
