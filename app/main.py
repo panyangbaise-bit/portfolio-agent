@@ -51,10 +51,12 @@ def init():
         if _PROCESS_BOOTSTRAPPED:
             return
 
-        # server.py already bootstrapped in this process? skip init.
+        # server.py already bootstrapped in this process? skip heavy init,
+        # but still retry welcome if the pre-Streamlit notify failed.
         if registry.markets:
             logger.info("Bootstrap already done by server.py, skipping.")
             _PROCESS_BOOTSTRAPPED = True
+            send_welcome()
             return
 
         init_db()

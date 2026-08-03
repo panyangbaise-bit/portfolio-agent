@@ -116,7 +116,7 @@ def _escape_unsafe_html(text: str) -> str:
     return "".join(result)
 
 
-def _send_message(text: str, reply_markup: Optional[dict] = None):
+def _send_message(text: str, reply_markup: Optional[dict] = None) -> bool:
     """Send a single Telegram message, falling back to plain-text on HTML parse error."""
     import requests
 
@@ -142,56 +142,90 @@ def _send_message(text: str, reply_markup: Optional[dict] = None):
             resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code != 200:
                 logger.error(f"Telegram plain-text retry also failed: {resp.status_code} {resp.text}")
-                return
+                return False
         else:
             logger.error(f"Telegram send failed: {resp.status_code} {resp.text}")
-            return
+            return False
 
     logger.info("Telegram message sent OK.")
+    return True
 
 
-def notify(message: str):
-    """Send a Telegram notification, splitting long messages if needed."""
+def notify(message: str) -> bool:
+    """Send a Telegram notification, splitting long messages if needed.
+
+    Returns True when at least one message was delivered successfully.
+    """
     if not _is_configured():
         logger.debug("Telegram not configured, skipping notification.")
-        return
+        return False
 
     html = _md_to_telegram_html(message)
     html = _escape_unsafe_html(html)
 
     try:
         if len(html) <= MAX_MESSAGE_LENGTH:
-            _send_message(html)
-            logger.info("Telegram notification sent.")
-        else:
-            # Split at paragraph boundaries.
-            parts = html.split("\n\n")
-            chunk = ""
-            for part in parts:
-                candidate = chunk + ("\n\n" if chunk else "") + part
-                if len(candidate) > MAX_MESSAGE_LENGTH and chunk:
-                    _send_message(chunk)
-                    chunk = part
+            ok = _send_message(html)
+            if ok:
+                logger.info("Telegram notification sent.")
+            return ok
+
+        # Split at paragraph boundaries.
+        parts = html.split("\n\n")
+        chunk = ""
+        sent_any = False
+        for part in parts:
+            candidate = chunk + ("\n\n" if chunk else "") + part
+            if len(candidate) > MAX_MESSAGE_LENGTH and chunk:
+                if _send_message(chunk):
+                    sent_any = True
                 else:
-                    chunk = candidate
-            if chunk:
-                _send_message(chunk)
+                    return False
+                chunk = part
+            else:
+                chunk = candidate
+        if chunk:
+            if _send_message(chunk):
+                sent_any = True
+            else:
+                return False
+        if sent_any:
             logger.info(f"Telegram notification sent in {len(parts)} parts.")
+        return sent_any
     except Exception as e:
         logger.error(f"Telegram notification error: {e}")
+        return False
 
 
-def send_welcome():
-    """Send a one-time process startup notification (not on page refresh)."""
+def send_welcome() -> bool:
+    """Send a one-time process startup notification (not on page refresh).
+
+    Only marks the process as notified after a successful send, so a transient
+    Telegram/network failure during ``server.py`` bootstrap can be retried on
+    the next ``app/main.py`` init without requiring a special curl.
+    """
     global _welcome_sent
     with _welcome_lock:
         if _welcome_sent:
             logger.info("Skipping Telegram welcome — already sent this process.")
-            return
-        _welcome_sent = True
+            return True
 
     now = format_display_time(datetime.now(timezone.utc))
-    notify(f"🤖 <b>Portfolio Agent 已启动</b>\n<code>{now}</code>")
+    ok = notify(f"🤖 <b>Portfolio Agent 已启动</b>\n<code>{now}</code>")
+    if ok:
+        with _welcome_lock:
+            _welcome_sent = True
+    else:
+        logger.warning("Telegram welcome not sent; will retry on next bootstrap/init.")
+    return ok
+
+
+def send_deploy_notice() -> bool:
+    """Notify that a deploy/restart finished (used by setup-server.sh)."""
+    now = format_display_time(datetime.now(timezone.utc))
+    return notify(
+        f"🚀 <b>Portfolio Agent 已更新部署</b>\n<code>{now}</code>"
+    )
 
 
 def send_urgent_recommendation(ticker: str, action: str, reasoning: str, confidence: float):

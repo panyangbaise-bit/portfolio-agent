@@ -187,9 +187,9 @@ Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-aver
 
 `notifier/telegram.py` has `discover_chat_id()` which calls `getUpdates` to find the most recent chat ID. This requires Telegram API to be reachable (blocked from mainland China without a proxy). Fallback: set `TELEGRAM_CHAT_ID` manually in `.env`.
 
-### Telegram welcome is process-once
+### Telegram welcome / deploy notify (no page visit required)
 
-`send_welcome()` must NOT key off `st.session_state` — Streamlit page refresh clears session state and would spam Telegram. Bootstrap uses a process-level lock in `app/main.py` plus `_welcome_sent` in `notifier/telegram.py`, so the “已启动” message fires only when the server process first starts.
+Production starts via `server.py` (`ExecStart=…/server.py`), which calls `send_welcome()` **before** Streamlit — deploy success must not depend on someone opening the dashboard. `send_welcome()` only sets `_welcome_sent` after a successful Telegram send, so a transient failure can retry from `app/main.py` init. `deploy/setup-server.sh` also calls `send_deploy_notice()` after `systemctl restart` (venv python, service user) as a second path independent of Streamlit script execution. Do **not** key welcome off `st.session_state` (refresh would spam).
 
 ### Telegram is send-only (shared bot with OpenClaw)
 

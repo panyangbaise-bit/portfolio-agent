@@ -174,6 +174,30 @@ install_systemd_unit() {
   systemctl restart "${SERVICE_NAME}"
   sleep 2
   systemctl --no-pager --full status "${SERVICE_NAME}" || true
+  notify_deploy_success "${user}"
+}
+
+notify_deploy_success() {
+  # Deploy notice is independent of Streamlit page load / script execution.
+  # server.py also calls send_welcome() at process start; this covers the case
+  # where systemd reports active before Telegram is reachable, or welcome is missed.
+  local user="$1"
+  local py="${APP_DIR}/.venv/bin/python3"
+  [[ -x "${py}" ]] || { log "WARN: 无 venv python，跳过部署通知"; return 0; }
+
+  if ! systemctl is-active --quiet "${SERVICE_NAME}"; then
+    log "WARN: 服务未处于 active，跳过部署通知"
+    return 0
+  fi
+
+  log "发送部署成功 Telegram 通知（不依赖访问页面）…"
+  # cd into APP_DIR so config.load_dotenv() picks up .env (same as systemd WorkingDirectory).
+  if sudo -u "${user}" bash -lc \
+    "cd '${APP_DIR}' && PYTHONPATH='${APP_DIR}' '${py}' -c 'from notifier.telegram import send_deploy_notice; import sys; sys.exit(0 if send_deploy_notice() else 1)'"; then
+    log "部署通知已发送"
+  else
+    log "WARN: 部署通知发送失败（检查 .env 中 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 与出网）"
+  fi
 }
 
 print_next_steps() {
