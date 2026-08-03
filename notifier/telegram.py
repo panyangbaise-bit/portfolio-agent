@@ -210,7 +210,12 @@ def send_urgent_recommendation(ticker: str, action: str, reasoning: str, confide
 
 
 def send_recommendation(recommendation):
-    """Send a pending recommendation with Telegram Accept/Dismiss buttons."""
+    """Send a pending recommendation as a notify-only Telegram message.
+
+    Accept/Dismiss must be done in the dashboard — this bot token is shared
+    with other services (e.g. OpenClaw), so we never long-poll getUpdates or
+    attach inline callback buttons.
+    """
     if not _is_configured():
         logger.debug("Telegram not configured, skipping recommendation.")
         return
@@ -223,17 +228,11 @@ def send_recommendation(recommendation):
         f"<b>操作：</b>{recommendation.action}\n"
         f"<b>紧急度：</b>{recommendation.urgency}\n"
         f"<b>置信度：</b>{recommendation.confidence:.0%}\n\n"
-        f"<b>理由：</b>\n{recommendation.reasoning}"
+        f"<b>理由：</b>\n{recommendation.reasoning}\n\n"
+        f"<i>请在 Dashboard → Recommendations 中 Accept / Dismiss</i>"
     )
-    reply_markup = {
-        "inline_keyboard": [[
-            {"text": "✅ Accept", "callback_data": f"rec:{recommendation.id}:accept"},
-            {"text": "❌ Dismiss", "callback_data": f"rec:{recommendation.id}:dismiss"},
-        ]],
-    }
     _send_message(
         _escape_unsafe_html(_md_to_telegram_html(message)),
-        reply_markup=reply_markup,
     )
 
 
@@ -332,17 +331,18 @@ class TelegramCallbackPoller:
 
 
 def start_callback_poller():
-    """Start one process-wide callback poller when Telegram is configured."""
-    global _callback_poller
-    with _callback_poller_lock:
-        if _callback_poller is None:
-            _callback_poller = TelegramCallbackPoller()
-        _callback_poller.start()
-    return _callback_poller
+    """No-op: Telegram is send-only to avoid getUpdates conflicts with OpenClaw.
+
+    Accept/Dismiss live on the dashboard only. The poller class remains for tests.
+    """
+    logger.info(
+        "Telegram callback poller disabled (send-only mode; no Accept/Dismiss via bot)."
+    )
+    return None
 
 
 def stop_callback_poller():
-    """Request shutdown of the process-wide callback poller."""
+    """Request shutdown of the process-wide callback poller (if any)."""
     if _callback_poller is not None:
         _callback_poller.stop()
 

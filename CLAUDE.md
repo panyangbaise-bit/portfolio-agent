@@ -42,8 +42,11 @@ Copy `.env.example` to `.env`:
 | `AUTH_MAX_FAILURES` | No | `3` then IP blacklisted |
 | `TELEGRAM_BOT_TOKEN` | No | — (notifications disabled) |
 | `TELEGRAM_CHAT_ID` | No | — |
-| `TELEGRAM_POLL_TIMEOUT` | No | `30` seconds |
-| `TELEGRAM_POLL_MAX_BACKOFF` | No | `60` seconds |
+| `TELEGRAM_POLL_TIMEOUT` | No | `30` seconds (unused; send-only) |
+| `TELEGRAM_POLL_MAX_BACKOFF` | No | `60` seconds (unused; send-only) |
+| `LANGSMITH_API_KEY` | No | — (tracing off without key) |
+| `LANGSMITH_PROJECT` | No | `portfolio-agent` |
+| `LANGSMITH_TRACING` | No | on when API key set; set `false` to disable |
 
 ## Architecture
 
@@ -51,14 +54,15 @@ Copy `.env.example` to `.env`:
 adapters/     Market data adapters (MarketAdapter ABC → yfinance/akshare/CoinGecko/WallStreetCN)
 agent/        LangGraph ReAct loop, system prompt, LangChain tools, session tracking
 app/          Streamlit dashboard (main.py + components/ + views/)
+app/fx.py     CNY FX rates (no Streamlit dep — used by agent `get_portfolio` + dashboard)
 app/i18n.py   English / Chinese UI strings, selected through top-banner EN/CN toggle
 app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_toggle()
 app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Watchlist → Recommendations → Jobs → History
 deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
 scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly trade review
-notifier/     Telegram Bot
-config.py     Central config from env vars
+notifier/     Telegram Bot (send-only; no getUpdates long-poll)
+config.py     Central config from env vars (+ LangSmith env bootstrap)
 tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, and agent session detail
 ```
 
@@ -183,9 +187,25 @@ Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-aver
 
 `send_welcome()` must NOT key off `st.session_state` — Streamlit page refresh clears session state and would spam Telegram. Bootstrap uses a process-level lock in `app/main.py` plus `_welcome_sent` in `notifier/telegram.py`, so the “已启动” message fires only when the server process first starts.
 
-### Telegram recommendation actions
+### Telegram is send-only (shared bot with OpenClaw)
 
-Every newly saved pending Recommendation sends Telegram inline **Accept** / **Dismiss** buttons. `TelegramCallbackPoller` uses low-overhead 30-second long polling in one daemon thread; callbacks must match `TELEGRAM_CHAT_ID` and use idempotent `apply_recommendation_action()` updates, so repeated or old button taps cannot create multiple user actions.
+New pending recommendations are pushed as plain Telegram text (no inline Accept/Dismiss). Long-poll `getUpdates` is **disabled** so this process never fights OpenClaw for the same bot token. Accept/Dismiss only on Dashboard → Recommendations (`apply_recommendation_action`).
+
+### Ask Agent streaming
+
+Dashboard Ask Agent submits from the popover, then streams in the main body via `run_ad_hoc_query_stream` → LangGraph `stream_mode=["updates","messages"]` → `st.status` (tool steps) + `st.write_stream` (answer). Scheduled jobs still use blocking `_invoke_agent` / `.invoke`.
+
+### Portfolio weights are CNY-normalized
+
+`get_portfolio` converts each holding with `app.fx.get_cny_rates` and computes `weight_pct` from `market_value_cny` (same basis as Dashboard KPIs). Never sum native USD/HKD/CNY face amounts — that inflated CN weights (~67% vs ~23%).
+
+### A-share OTC fund NAV is T+1
+
+`CNMarketAdapter._get_fund_price` returns unit NAV with `quote_type=nav`, `lag=T+1`, `nav_date`, and `change_pct_basis=nav_dod`. Do not describe `change_pct` as same-day intraday move.
+
+### LangSmith observability
+
+Set `LANGSMITH_API_KEY` in `.env` (optional `LANGSMITH_PROJECT`). `config.py` exports `LANGCHAIN_TRACING_V2` / `LANGSMITH_TRACING` so LangGraph runs appear at [smith.langchain.com](https://smith.langchain.com) with prompts, tool calls, model output, and token usage. Disable with `LANGSMITH_TRACING=false`.
 
 ### Public password gate
 

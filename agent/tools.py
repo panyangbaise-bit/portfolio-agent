@@ -33,17 +33,29 @@ def _notify_recommendation(recommendation) -> None:
 
 @tool
 def get_portfolio() -> list[dict]:
-    """获取当前所有持仓列表，包括每个标的的代码、市场、股数、成本价和仓位类型。
+    """获取当前所有持仓列表（市值与权重均按人民币折算，与 Dashboard 一致）。
 
     Returns:
-        list[dict]: 持仓列表，每项含 ticker, market, shares, cost_basis, position_type, pnl_pct, weight_pct
+        list[dict]: 持仓列表，每项含 ticker, market, shares, cost_basis, currency,
+        current_price, market_value（原币）, market_value_cny, pnl_pct, weight_pct（按 CNY）
     """
+    from app.fx import currency_for_market, get_cny_rates
+
     session = get_session()
     try:
         holdings = get_open_holdings(session)
-        total_value = 0.0
+        markets = tuple(sorted({h.market.upper() for h in holdings}))
+        cny_rates = get_cny_rates(markets)
+
+        total_value_cny = 0.0
         values = []
+        missing_fx = []
         for h in holdings:
+            market = h.market.upper()
+            rate = cny_rates.get(market)
+            if rate is None:
+                missing_fx.append(market)
+                continue
             try:
                 adapter = adapter_registry.get(h.market)
                 price_data = adapter.get_price(h.ticker)
@@ -51,22 +63,39 @@ def get_portfolio() -> list[dict]:
             except Exception:
                 current_price = h.cost_basis
             market_value = h.shares * current_price
-            total_value += market_value
+            market_value_cny = market_value * rate
+            total_value_cny += market_value_cny
             pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
             values.append({
                 "ticker": h.ticker,
                 "market": h.market,
                 "shares": h.shares,
                 "cost_basis": h.cost_basis,
-                "current_price": round(current_price, 2),
+                "currency": currency_for_market(market),
+                "current_price": round(current_price, 4) if market == "CN" else round(current_price, 2),
                 "position_type": h.position_type,
                 "pnl_pct": round(pnl_pct, 2),
                 "market_value": round(market_value, 2),
+                "market_value_cny": round(market_value_cny, 2),
+                "fx_rate_to_cny": rate,
                 "holding_id": h.id,
             })
 
+        if missing_fx:
+            return {
+                "error": (
+                    "无法获取汇率，无法计算人民币仓位权重: "
+                    + ", ".join(sorted(set(missing_fx)))
+                ),
+                "holdings": values,
+            }
+
         for v in values:
-            v["weight_pct"] = round(v["market_value"] / total_value * 100, 2) if total_value > 0 else 0
+            v["weight_pct"] = (
+                round(v["market_value_cny"] / total_value_cny * 100, 2)
+                if total_value_cny > 0
+                else 0
+            )
 
         return values
     finally:
@@ -135,18 +164,21 @@ def _resolve_adapters_for_batch(tickers: list[str], market: str):
 
 @tool
 def get_price(ticker: str, market: str) -> dict:
-    """获取标的价格和日内变动。支持单个和批量查询。
+    """获取标的价格与涨跌。支持单个和批量查询。
 
     单个: get_price(ticker="AAPL", market="US")
     同市场批量: get_price(ticker="AAPL,TSLA", market="US")
     跨市场批量: get_price(ticker="AAPL,600519", market="US,CN")
+
+    A 股场外基金/ETF联接（如 020357）返回的是单位净值（quote_type=nav, lag=T+1），
+    change_pct 是相对上一净值日，不是今日盘中涨跌；请看 nav_date。
 
     Args:
         ticker: 单个标的代码，或多个逗号分隔
         market: 市场代码，多标的时可逗号分隔与ticker一一对应
 
     Returns:
-        单个时 {ticker, price, ...}
+        单个时 {ticker, price, change_pct, ...}；基金另含 nav_date / quote_type / lag
         多个时 {"batch": true, "results": {ticker: {price, ...}, ...}}
     """
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]

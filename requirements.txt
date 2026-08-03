@@ -5,6 +5,7 @@ streamlit>=1.33.0
 langchain>=0.3.0
 langgraph>=0.2.0
 langchain-openai>=0.2.0
+langsmith>=0.1.0
 
 # Data
 yfinance>=0.2.40

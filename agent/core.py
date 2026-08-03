@@ -1,9 +1,10 @@
 """Agent core orchestrator — ties together session, graph, and tools."""
 
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from typing import Optional
+from typing import Any, Dict, Iterator, Optional
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from agent.graph import agent_graph
 from agent.session import AgentSessionManager
@@ -169,31 +170,140 @@ def run_trade_review_analysis(days: int = 31) -> Optional[str]:
     return text
 
 
-def run_ad_hoc_query(question: str) -> str:
-    """Run agent analysis for a user's ad-hoc question from the dashboard.
+def _chunk_text(content: Any) -> str:
+    """Normalize LangChain message content to a plain string delta."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text") or ""))
+        return "".join(parts)
+    return str(content)
 
-    Args:
-        question: The user's free-text question
 
-    Returns:
-        Agent's response text
+def _iter_answer_chunks(text: str, size: int = 48) -> Iterator[str]:
+    """Yield answer text in small chunks for Streamlit write_stream UX."""
+    if not text:
+        return
+    for i in range(0, len(text), size):
+        yield text[i : i + size]
+
+
+def run_ad_hoc_query_stream(question: str) -> Iterator[Dict[str, Any]]:
+    """Stream Ask Agent progress for the dashboard (status + token events).
+
+    Yields dicts:
+      {"type": "status", "text": "..."}  — tool / node progress
+      {"type": "token", "text": "..."}   — assistant answer deltas
+      {"type": "done", "text": "..."}    — full final answer
+      {"type": "error", "text": "..."}   — failure / timeout
+
+    Uses LangGraph ``stream_mode=["updates", "messages"]``. DeepSeek thinking
+    mode keeps ``agent_node`` on ``invoke``; token events come from message
+    chunks when available, otherwise the final agent update is chunked for UI.
     """
     session = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
     session.start()
 
-    message = HumanMessage(content=question)
-
-    result = _invoke_agent(session, {
-        "messages": [message],
+    state = {
+        "messages": [HumanMessage(content=question)],
         "session_id": session.session_id,
         "triggered_by": "manual",
         "extra_context": "",
-    })
+    }
 
-    last_msg = result["messages"][-1]
-    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
-    session.finish(summary=text)
-    return text
+    timeout = float(config.AGENT_RUN_TIMEOUT)
+    deadline = time.monotonic() + timeout
+    final_text = ""
+    got_message_stream = False
+
+    try:
+        for mode, chunk in agent_graph.stream(
+            state, stream_mode=["updates", "messages"]
+        ):
+            if time.monotonic() > deadline:
+                msg = f"Agent run timed out after {timeout:.0f}s"
+                session.fail(summary=msg)
+                yield {"type": "error", "text": msg}
+                return
+
+            if mode == "messages":
+                msg_chunk, _metadata = chunk
+                if not isinstance(msg_chunk, (AIMessageChunk, AIMessage)):
+                    continue
+                if getattr(msg_chunk, "tool_call_chunks", None) or getattr(
+                    msg_chunk, "tool_calls", None
+                ):
+                    continue
+                delta = _chunk_text(getattr(msg_chunk, "content", ""))
+                if not delta:
+                    continue
+                got_message_stream = True
+                final_text += delta
+                yield {"type": "token", "text": delta}
+                continue
+
+            if mode != "updates" or not isinstance(chunk, dict):
+                continue
+
+            if "tools" in chunk:
+                tool_msgs = (chunk.get("tools") or {}).get("messages") or []
+                for tm in tool_msgs:
+                    name = getattr(tm, "name", None) or "tool"
+                    yield {"type": "status", "text": f"🔧 {name}"}
+
+            if "agent" not in chunk:
+                continue
+            agent_msgs = (chunk.get("agent") or {}).get("messages") or []
+            for msg in agent_msgs:
+                tool_calls = getattr(msg, "tool_calls", None) or []
+                if tool_calls:
+                    names = []
+                    for tc in tool_calls:
+                        if isinstance(tc, dict):
+                            names.append(tc.get("name") or "tool")
+                        else:
+                            names.append(getattr(tc, "name", None) or "tool")
+                    yield {"type": "status", "text": "→ " + ", ".join(names)}
+                    continue
+
+                content = _chunk_text(getattr(msg, "content", ""))
+                if not content:
+                    continue
+                final_text = content
+                if not got_message_stream:
+                    for piece in _iter_answer_chunks(content):
+                        yield {"type": "token", "text": piece}
+
+        session.finish(summary=final_text or "(empty)")
+        yield {"type": "done", "text": final_text}
+    except Exception as exc:
+        session.fail(summary=str(exc))
+        yield {"type": "error", "text": str(exc)}
+
+
+def run_ad_hoc_query(question: str) -> str:
+    """Run agent analysis for a user's ad-hoc question from the dashboard.
+
+    Collects the streamed Ask Agent output into a single string (tests / callers
+    that do not need progressive UI).
+    """
+    final = ""
+    for event in run_ad_hoc_query_stream(question):
+        if event["type"] == "done":
+            final = event.get("text") or final
+        elif event["type"] == "error":
+            text = event.get("text") or "Ask Agent failed"
+            if "timed out" in text.lower():
+                raise AgentRunTimeout(text)
+            raise RuntimeError(text)
+    return final
 
 
 def poll_news_for_portfolio(tickers: list[str]) -> list[dict]:

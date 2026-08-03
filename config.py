@@ -26,11 +26,24 @@ class Config:
     # Per-request HTTP timeout for chat/completions (seconds). Prevents indefinite hangs.
     DEEPSEEK_TIMEOUT: float = float(os.environ.get("DEEPSEEK_TIMEOUT", "300"))
 
-    # Telegram
+    # Telegram (send-only — no getUpdates long-poll; Accept/Dismiss on dashboard)
     TELEGRAM_BOT_TOKEN: str = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.environ.get("TELEGRAM_CHAT_ID", "")
     TELEGRAM_POLL_TIMEOUT: int = int(os.environ.get("TELEGRAM_POLL_TIMEOUT", "30"))
     TELEGRAM_POLL_MAX_BACKOFF: int = int(os.environ.get("TELEGRAM_POLL_MAX_BACKOFF", "60"))
+
+    # LangSmith observability (prompt + tool + token traces at smith.langchain.com)
+    LANGSMITH_API_KEY: str = os.environ.get("LANGSMITH_API_KEY", "") or os.environ.get(
+        "LANGCHAIN_API_KEY", ""
+    )
+    LANGSMITH_PROJECT: str = os.environ.get(
+        "LANGSMITH_PROJECT",
+        os.environ.get("LANGCHAIN_PROJECT", "portfolio-agent"),
+    )
+    LANGSMITH_TRACING: bool = os.environ.get(
+        "LANGSMITH_TRACING",
+        os.environ.get("LANGCHAIN_TRACING_V2", "false"),
+    ).lower() in ("1", "true", "yes", "on")
 
     # Scheduler / agent run limits
     # Overall LangGraph invoke budget (multi-round tools + LLM). Must be >= DEEPSEEK_TIMEOUT.
@@ -61,4 +74,29 @@ class Config:
     }
 
 
+def _configure_langsmith_env(cfg: Config) -> None:
+    """Export LangSmith env vars early so LangChain/LangGraph auto-trace.
+
+    When ``LANGSMITH_API_KEY`` is set, tracing defaults on unless explicitly
+    disabled via ``LANGSMITH_TRACING=false`` / ``LANGCHAIN_TRACING_V2=false``.
+    """
+    if not cfg.LANGSMITH_API_KEY:
+        return
+    os.environ["LANGSMITH_API_KEY"] = cfg.LANGSMITH_API_KEY
+    os.environ["LANGCHAIN_API_KEY"] = cfg.LANGSMITH_API_KEY
+    os.environ["LANGSMITH_PROJECT"] = cfg.LANGSMITH_PROJECT
+    os.environ["LANGCHAIN_PROJECT"] = cfg.LANGSMITH_PROJECT
+
+    explicit = os.environ.get("LANGSMITH_TRACING") or os.environ.get(
+        "LANGCHAIN_TRACING_V2"
+    )
+    if explicit is not None and explicit.lower() in ("0", "false", "no", "off"):
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        return
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+
+
 config = Config()
+_configure_langsmith_env(config)

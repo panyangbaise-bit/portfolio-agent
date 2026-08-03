@@ -45,6 +45,11 @@ class CNMarketAdapter(MarketAdapter):
         }
 
     def _get_fund_price(self, ticker: str) -> dict:
+        """Return OTC fund/ETF-feeder NAV (T+1 published), not live exchange ticks.
+
+        ``change_pct`` is NAV day-over-day vs the previous 净值日 — never treat
+        it as same-session intraday move. ``nav_date`` is the authoritative as-of.
+        """
         df = ak.fund_open_fund_info_em(symbol=ticker, indicator="单位净值走势")
         if df.empty:
             raise ValueError(f"Fund {ticker} not found")
@@ -52,14 +57,29 @@ class CNMarketAdapter(MarketAdapter):
         prev = df.iloc[-2] if len(df) >= 2 else latest
         change_pct = 0.0
         if latest["单位净值"] and prev["单位净值"]:
-            change_pct = round((float(latest["单位净值"]) / float(prev["单位净值"]) - 1) * 100, 2)
+            change_pct = round(
+                (float(latest["单位净值"]) / float(prev["单位净值"]) - 1) * 100, 2
+            )
+        nav_date = str(latest.get("净值日期", ""))[:10] or None
+        prev_nav_date = str(prev.get("净值日期", ""))[:10] or None
         return {
             "ticker": ticker,
             "price": float(latest["单位净值"]),
             "currency": "CNY",
             "change_pct": change_pct,
             "volume": None,
-            "timestamp": datetime.now().isoformat(),
+            # As-of NAV day (T+1 publish lag) — not wall-clock "live quote" time.
+            "timestamp": nav_date or datetime.now().isoformat(),
+            "nav_date": nav_date,
+            "prev_nav_date": prev_nav_date,
+            "quote_type": "nav",
+            "lag": "T+1",
+            "change_pct_basis": "nav_dod",
+            "note": (
+                "场外基金/ETF联接单位净值，通常 T+1 公布；"
+                "change_pct 为相对上一净值日，不是今日盘中涨跌。"
+            ),
+            "fetched_at": datetime.now().isoformat(),
         }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import notifier.telegram as telegram
 
 
-def test_send_recommendation_adds_accept_and_dismiss_inline_buttons(monkeypatch):
+def test_send_recommendation_is_notify_only_without_inline_buttons(monkeypatch):
     sent = []
     recommendation = SimpleNamespace(
         id=42,
@@ -24,13 +24,28 @@ def test_send_recommendation_adds_accept_and_dismiss_inline_buttons(monkeypatch)
     telegram.send_recommendation(recommendation)
 
     assert "AAPL" in sent[0][0]
-    assert sent[0][1]["inline_keyboard"] == [[
-        {"text": "✅ Accept", "callback_data": "rec:42:accept"},
-        {"text": "❌ Dismiss", "callback_data": "rec:42:dismiss"},
-    ]]
+    assert "Dashboard" in sent[0][0]
+    assert sent[0][1] is None
+
+
+def test_start_callback_poller_is_disabled_send_only(monkeypatch):
+    started = []
+
+    class FakePoller:
+        def start(self):
+            started.append(True)
+
+    monkeypatch.setattr(telegram, "TelegramCallbackPoller", FakePoller)
+    telegram._callback_poller = None
+
+    result = telegram.start_callback_poller()
+
+    assert result is None
+    assert started == []
 
 
 def test_callback_poller_applies_authorized_recommendation_action(monkeypatch):
+    """Poller class retained for unit tests; production never starts it."""
     answers = []
     actions = []
     poller = telegram.TelegramCallbackPoller()
