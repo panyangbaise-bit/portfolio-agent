@@ -5,6 +5,7 @@ from typing import List
 import streamlit as st
 
 from app.i18n import t
+from app.styles.theme import inject_ask_agent_dock
 
 
 def _ensure_state() -> None:
@@ -48,7 +49,6 @@ def _finish_pending(pending: str, messages: List[dict], show_ui: bool) -> None:
 
     history = _history_for_stream(messages, pending)
     tokens = []
-    status_lines = []
     final_text = ""
     errored = False
 
@@ -63,7 +63,6 @@ def _finish_pending(pending: str, messages: List[dict], show_ui: bool) -> None:
                         text = event.get("text") or ""
                         if etype == "status":
                             status_box.write(text)
-                            status_lines.append(text)
                         elif etype == "token":
                             tokens.append(text)
                             yield text
@@ -107,11 +106,10 @@ def render_ask_agent_chat() -> None:
     _ensure_state()
 
     open_panel = bool(st.session_state.get("ask_agent_open"))
-    busy = bool(st.session_state.get("ask_agent_busy"))
     pending = st.session_state.get("ask_agent_pending")
     messages = list(st.session_state.get("ask_agent_messages") or [])
 
-    # CSS hook — parent vertical block is position:fixed via cyberpunk.css
+    # CSS/JS hook — dock script pins the leaf host bottom-right.
     st.markdown(
         '<div class="pa-ask-agent-root" aria-hidden="true"></div>',
         unsafe_allow_html=True,
@@ -121,11 +119,8 @@ def render_ask_agent_chat() -> None:
         if st.button("✦", key="ask_agent_fab", help=t("ask_agent.open"), type="primary"):
             st.session_state["ask_agent_open"] = True
             st.rerun()
-        # Collapse hides UI; if a run is in flight, still drain so it can finish.
         if pending:
             _finish_pending(pending, messages, show_ui=False)
-        from app.styles.theme import inject_ask_agent_dock
-
         inject_ask_agent_dock()
         return
 
@@ -133,6 +128,10 @@ def render_ask_agent_chat() -> None:
         '<div class="pa-ask-agent-panel" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
+    # Dock before heavy stream widgets so mid-reply mutations keep the float.
+    inject_ask_agent_dock()
+
+    busy = bool(st.session_state.get("ask_agent_busy"))
 
     hdr_l, hdr_mid, hdr_r = st.columns([4, 1, 1])
     with hdr_l:
@@ -154,8 +153,16 @@ def render_ask_agent_chat() -> None:
         with st.chat_message("user" if role == "user" else "assistant"):
             st.markdown(msg.get("content") or "")
 
+    finished_stream = False
     if pending:
         _finish_pending(pending, messages, show_ui=True)
+        finished_stream = True
+
+    # Re-read after stream — stale busy=True would leave the input disabled.
+    busy = bool(st.session_state.get("ask_agent_busy"))
+    if finished_stream:
+        # Refresh so completed messages + enabled input render cleanly in-panel.
+        st.rerun()
 
     with st.form("ask_agent_form", clear_on_submit=True):
         question = st.text_area(
@@ -176,14 +183,10 @@ def render_ask_agent_chat() -> None:
             if not text:
                 st.warning(t("ask_agent.empty"))
             elif not busy:
-                st.session_state["ask_agent_messages"] = messages + [
-                    {"role": "user", "content": text}
-                ]
+                st.session_state["ask_agent_messages"] = list(
+                    st.session_state.get("ask_agent_messages") or []
+                ) + [{"role": "user", "content": text}]
                 st.session_state["ask_agent_pending"] = text
                 st.session_state["ask_agent_busy"] = True
                 st.session_state["ask_agent_open"] = True
                 st.rerun()
-
-    from app.styles.theme import inject_ask_agent_dock
-
-    inject_ask_agent_dock()

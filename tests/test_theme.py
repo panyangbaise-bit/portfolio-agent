@@ -82,6 +82,15 @@ def test_ask_agent_fixed_css_targets_dock_host_class_not_has_selector():
     assert "stVerticalBlock]:has(.pa-ask-agent-root)" not in ask_css
 
 
+def test_ask_agent_open_panel_css_is_resizable():
+    css = load_cyberpunk_css()
+    start = css.index("Ask Agent floating chat")
+    ask_css = css[start:]
+    assert "resize: both" in ask_css
+    assert "stForm" in ask_css
+    assert "position: sticky" in ask_css
+
+
 def test_ask_agent_dock_js_refuses_main_page_hosts():
     from app.styles.theme import build_ask_agent_dock_html
 
@@ -90,3 +99,7 @@ def test_ask_agent_dock_js_refuses_main_page_hosts():
     assert "looksLikeMainPage" in html
     assert "stDataFrame" in html
     assert "deepestBlockContaining" in html
+    # Mid-reply undock bug: nested-block count must not reject the host.
+    assert "if (nested > 8)" not in html
+    assert "SIZE_KEY" in html
+    assert "ResizeObserver" in html

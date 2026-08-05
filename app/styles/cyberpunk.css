@@ -372,11 +372,20 @@ button.pa-locale-toggle:hover {
   box-shadow: none !important;
 }
 
+/* Open panel: resizable floating card. Avoid !important on width/height so
+   CSS resize + localStorage sizes can stick. Sticky form keeps input usable. */
 .pa-ask-agent-dock-host.pa-ask-agent-dock-open {
-  width: min(360px, calc(100vw - 1.5rem)) !important;
-  max-height: min(520px, calc(100vh - 2rem)) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: min(420px, calc(100vw - 1.5rem));
+  height: min(560px, calc(100vh - 2rem));
+  min-width: 280px;
+  min-height: 320px;
+  max-width: calc(100vw - 1.5rem);
+  max-height: calc(100vh - 2rem);
   overflow-x: hidden !important;
   overflow-y: auto !important;
+  resize: both;
   background: rgba(10, 14, 23, 0.96) !important;
   border: 1px solid rgba(0, 240, 255, 0.35) !important;
   border-radius: 14px !important;
@@ -384,6 +393,16 @@ button.pa-locale-toggle:hover {
     0 12px 40px rgba(0, 0, 0, 0.55),
     0 0 20px rgba(0, 240, 255, 0.12) !important;
   padding: 0.55rem 0.7rem 0.8rem !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] {
+  position: sticky !important;
+  bottom: 0 !important;
+  z-index: 5 !important;
+  margin-top: auto !important;
+  background: rgba(10, 14, 23, 0.98) !important;
+  padding-top: 0.35rem !important;
+  border-top: 1px solid rgba(0, 240, 255, 0.2) !important;
 }
 
 .pa-ask-agent-dock-host:not(.pa-ask-agent-dock-open) button[kind="primary"],

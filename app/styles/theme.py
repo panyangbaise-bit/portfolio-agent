@@ -239,6 +239,9 @@ def build_ask_agent_dock_html():
     pins Dashboard content to the bottom-right. We walk the DOM, pick the
     deepest vertical block that contains the marker, refuse hosts that also
     contain main-page widgets, and toggle ``.pa-ask-agent-dock-host``.
+
+    Do NOT reject hosts for nested-block count — chat_message / status / stream
+    create many nested blocks and would undock mid-reply.
     """
     return (
         """
@@ -249,15 +252,20 @@ def build_ask_agent_dock_html():
   const doc = window.parent.document;
   const HOST = "pa-ask-agent-dock-host";
   const OPEN = "pa-ask-agent-dock-open";
+  const SIZE_KEY = "pa-ask-agent-dock-size";
 
   function looksLikeMainPage(block) {
     if (!block) return true;
+    // Only refuse true page chrome — never nested-block count (stream grows deep).
     if (block.querySelector('[data-testid="stDataFrame"]')) return true;
     if (block.querySelector('[data-testid="stMetric"]')) return true;
-    if (block.querySelector('h1')) return true;
     if (block.querySelector('[data-testid="stSidebar"]')) return true;
-    const nested = block.querySelectorAll('[data-testid="stVerticalBlock"]').length;
-    if (nested > 8) return true;
+    // Dashboard page title lives outside the Ask Agent container.
+    const h1 = block.querySelector("h1");
+    if (h1 && !block.querySelector(".pa-ask-agent-root")) return true;
+    if (h1 && h1.textContent && /Dashboard|仪表盘|Holdings|持仓/.test(h1.textContent)) {
+      return true;
+    }
     return false;
   }
 
@@ -272,12 +280,59 @@ def build_ask_agent_dock_html():
     return best;
   }
 
+  function applySavedSize(host) {
+    try {
+      const raw = window.parent.localStorage.getItem(SIZE_KEY);
+      if (!raw) return;
+      const size = JSON.parse(raw);
+      if (size && size.w > 200 && size.h > 200) {
+        host.style.setProperty("width", size.w + "px", "important");
+        host.style.setProperty("height", size.h + "px", "important");
+      }
+    } catch (e) {}
+  }
+
+  function watchResize(host) {
+    if (host.__paResizeBound) return;
+    host.__paResizeBound = true;
+    let timer = null;
+    const ro = new ResizeObserver(function () {
+      if (!host.classList.contains(OPEN)) return;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        const r = host.getBoundingClientRect();
+        if (r.width < 200 || r.height < 200) return;
+        try {
+          window.parent.localStorage.setItem(
+            SIZE_KEY,
+            JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
+          );
+        } catch (e) {}
+      }, 200);
+    });
+    ro.observe(host);
+  }
+
   function dock() {
     const root = doc.querySelector(".pa-ask-agent-root");
     if (!root) return false;
 
     const host = deepestBlockContaining(root);
     if (!host || looksLikeMainPage(host)) {
+      // Keep an already-docked host if root is still inside it (stream reflow).
+      const existing = doc.querySelector("." + HOST);
+      if (existing && existing.contains(root) && !looksLikeMainPage(existing)) {
+        if (doc.querySelector(".pa-ask-agent-panel")) {
+          existing.classList.add(OPEN);
+          applySavedSize(existing);
+          watchResize(existing);
+        } else {
+          existing.classList.remove(OPEN);
+          existing.style.removeProperty("width");
+          existing.style.removeProperty("height");
+        }
+        return true;
+      }
       doc.querySelectorAll("." + HOST).forEach(function (el) {
         el.classList.remove(HOST);
         el.classList.remove(OPEN);
@@ -289,13 +344,19 @@ def build_ask_agent_dock_html():
       if (el !== host) {
         el.classList.remove(HOST);
         el.classList.remove(OPEN);
+        el.style.removeProperty("width");
+        el.style.removeProperty("height");
       }
     });
     host.classList.add(HOST);
     if (doc.querySelector(".pa-ask-agent-panel")) {
       host.classList.add(OPEN);
+      applySavedSize(host);
+      watchResize(host);
     } else {
       host.classList.remove(OPEN);
+      host.style.removeProperty("width");
+      host.style.removeProperty("height");
     }
     return true;
   }
@@ -305,11 +366,18 @@ def build_ask_agent_dock_html():
   const timer = setInterval(function () {
     tries += 1;
     dock();
-    if (tries > 30) clearInterval(timer);
+    if (tries > 60) clearInterval(timer);
   }, 100);
 
   if (!window.__paAskAgentDockObs) {
-    window.__paAskAgentDockObs = new MutationObserver(function () { dock(); });
+    let scheduled = null;
+    window.__paAskAgentDockObs = new MutationObserver(function () {
+      if (scheduled) return;
+      scheduled = setTimeout(function () {
+        scheduled = null;
+        dock();
+      }, 50);
+    });
     window.__paAskAgentDockObs.observe(doc.body, { childList: true, subtree: true });
   }
 """
