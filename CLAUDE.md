@@ -143,9 +143,9 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted enums (actions, markets, statuses). `st.session_state["locale"]` is `en` or `zh` (toggled by the top-banner EN/CN button); agent-generated reasoning and user-entered names are not translated. Sidebar nav keys are stable (`dashboard`/`holdings`/`watchlist`/`recommendations`/`jobs`/`history`) so switching language does not reset the current page.
 
-### Ask Agent is a popover
+### Ask Agent is a global floating chat
 
-Dashboard Ask Agent uses `st.popover` (requires streamlit>=1.33). It does not sit in a right column — holdings are full width. Theme CSS is re-injected every Streamlit rerun from `app/main.py` via `inject_cyberpunk_theme()`.
+Ask Agent is a LangSmith-style FAB + floating panel rendered from `app/main.py` via `render_ask_agent_chat()` on every page (not Dashboard-only). Open/close and multi-turn thread live in `st.session_state`; streaming stays inside the panel. Theme CSS (`pa-ask-agent-root` / `pa-ask-agent-panel`) fixes the host block bottom-right. Theme CSS is re-injected every Streamlit rerun via `inject_cyberpunk_theme()`.
 
 ### Do not name view folder `pages/`
 
@@ -201,7 +201,7 @@ New pending recommendations are pushed as plain Telegram text (no inline Accept/
 
 ### Ask Agent streaming
 
-Dashboard Ask Agent submits from the popover, then streams in the main body via `run_ad_hoc_query_stream` → LangGraph `stream_mode=["updates","messages"]` → `st.status` (tool steps) + `st.write_stream` (answer). Scheduled jobs still use blocking `_invoke_agent` / `.invoke`.
+Ask Agent submits from the floating panel, then streams inside the panel via `run_ad_hoc_query_stream(question, history=...)` → LangGraph `stream_mode=["updates","messages"]` → `st.status` (tool steps) + `st.write_stream` (answer). Prior turns are passed as `history` for multi-turn context. Scheduled jobs still use blocking `_invoke_agent` / `.invoke`.
 
 ### Portfolio weights are CNY-normalized
 

@@ -344,3 +344,64 @@ button.pa-locale-toggle:hover {
   box-shadow: 0 0 16px rgba(0, 240, 255, 0.55);
   color: var(--cp-cyan);
 }
+
+/* ── Ask Agent floating chat (LangSmith-style FAB + panel) ──
+   Marker divs (.pa-ask-agent-root / .pa-ask-agent-panel) are hidden;
+   :has() lifts their parent Streamlit vertical block into a fixed overlay. */
+.pa-ask-agent-root,
+.pa-ask-agent-panel {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root) {
+  position: fixed !important;
+  right: 1rem !important;
+  bottom: 1rem !important;
+  left: auto !important;
+  z-index: 999990 !important;
+  width: auto !important;
+  max-width: min(360px, calc(100vw - 1.5rem)) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-panel) {
+  width: min(360px, calc(100vw - 1.5rem)) !important;
+  max-height: min(520px, calc(100vh - 2rem)) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: rgba(10, 14, 23, 0.96) !important;
+  border: 1px solid rgba(0, 240, 255, 0.35) !important;
+  border-radius: 14px !important;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(0, 240, 255, 0.12) !important;
+  padding: 0.55rem 0.7rem 0.8rem !important;
+}
+
+/* Collapsed FAB — circular primary button */
+div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(:has(.pa-ask-agent-panel))
+  button[kind="primary"],
+div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(:has(.pa-ask-agent-panel))
+  button[data-testid="baseButton-primary"] {
+  border-radius: 999px !important;
+  width: 3rem !important;
+  height: 3rem !important;
+  min-height: 3rem !important;
+  padding: 0 !important;
+  font-size: 1.2rem !important;
+  line-height: 1 !important;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.45) !important;
+}
+
+@media (max-width: 768px) {
+  div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root) {
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+  }
+}

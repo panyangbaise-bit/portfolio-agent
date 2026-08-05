@@ -195,14 +195,21 @@ def _iter_answer_chunks(text: str, size: int = 48) -> Iterator[str]:
         yield text[i : i + size]
 
 
-def run_ad_hoc_query_stream(question: str) -> Iterator[Dict[str, Any]]:
-    """Stream Ask Agent progress for the dashboard (status + token events).
+def run_ad_hoc_query_stream(
+    question: str,
+    history: Optional[list] = None,
+) -> Iterator[Dict[str, Any]]:
+    """Stream Ask Agent progress for the floating chat (status + token events).
 
     Yields dicts:
       {"type": "status", "text": "..."}  — tool / node progress
       {"type": "token", "text": "..."}   — assistant answer deltas
       {"type": "done", "text": "..."}    — full final answer
       {"type": "error", "text": "..."}   — failure / timeout
+
+    ``history`` is prior completed turns as ``{role, content}`` dicts
+    (``user`` / ``assistant``). The current ``question`` is appended as a new
+    HumanMessage and is not duplicated inside ``history``.
 
     Uses LangGraph ``stream_mode=["updates", "messages"]``. DeepSeek thinking
     mode keeps ``agent_node`` on ``invoke``; token events come from message
@@ -211,8 +218,21 @@ def run_ad_hoc_query_stream(question: str) -> Iterator[Dict[str, Any]]:
     session = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
     session.start()
 
+    prior = []
+    for turn in history or []:
+        if not isinstance(turn, dict):
+            continue
+        role = (turn.get("role") or "").strip().lower()
+        content = turn.get("content") or ""
+        if not content:
+            continue
+        if role == "user":
+            prior.append(HumanMessage(content=content))
+        elif role == "assistant":
+            prior.append(AIMessage(content=content))
+
     state = {
-        "messages": [HumanMessage(content=question)],
+        "messages": prior + [HumanMessage(content=question)],
         "session_id": session.session_id,
         "triggered_by": "manual",
         "extra_context": "",

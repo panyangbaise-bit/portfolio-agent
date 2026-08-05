@@ -67,3 +67,46 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
     assert types[-1] == "done"
     assert "23%" in out[-1]["text"]
     assert events[0][0] == "finish"
+
+
+def test_run_ad_hoc_query_stream_includes_history_in_state(monkeypatch):
+    captured = {}
+
+    class FakeSession:
+        session_id = 9
+
+        def start(self):
+            return None
+
+        def finish(self, summary=""):
+            return None
+
+        def fail(self, summary=""):
+            return None
+
+    def fake_stream(state, stream_mode=None):
+        captured["messages"] = state["messages"]
+        yield ("updates", {"agent": {"messages": [AIMessage(content="ok")]}})
+
+    monkeypatch.setattr(
+        "agent.core.AgentSessionManager",
+        lambda **kwargs: FakeSession(),
+    )
+    monkeypatch.setattr("agent.core.agent_graph.stream", fake_stream)
+    monkeypatch.setattr("agent.core.config.AGENT_RUN_TIMEOUT", 30)
+
+    list(
+        run_ad_hoc_query_stream(
+            "那港股呢？",
+            history=[
+                {"role": "user", "content": "美股偏重吗？"},
+                {"role": "assistant", "content": "QQQ 约 40%。"},
+            ],
+        )
+    )
+    from langchain_core.messages import HumanMessage
+
+    msgs = captured["messages"]
+    assert isinstance(msgs[0], HumanMessage) and "美股" in msgs[0].content
+    assert isinstance(msgs[1], AIMessage) and "40%" in msgs[1].content
+    assert isinstance(msgs[2], HumanMessage) and "港股" in msgs[2].content

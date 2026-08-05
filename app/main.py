@@ -120,5 +120,9 @@ page_path = dict(NAV_ITEMS)[page_key]
 with open(page_path) as f:
     exec(f.read())
 
+from app.components.ask_agent_chat import render_ask_agent_chat
+
+render_ask_agent_chat()
+
 import atexit
 atexit.register(stop_scheduler)

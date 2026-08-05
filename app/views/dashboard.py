@@ -1,6 +1,4 @@
-"""Main dashboard — KPI overview, holdings snapshot, ask-agent."""
-
-import time
+"""Main dashboard — KPI overview and holdings snapshot."""
 
 import streamlit as st
 from app.i18n import t
@@ -16,59 +14,8 @@ from app.components.price_fetcher import (
 )
 from db.repository import get_open_holdings, get_session
 
-hdr_l, hdr_r = st.columns([5, 1])
-with hdr_l:
-    st.title(t("dashboard.title"))
-with hdr_r:
-    st.write("")  # vertical align popover with title
-    with st.popover(t("ask_agent.popover")):
-        user_question = st.text_area(
-            t("ask_agent.question"),
-            placeholder=t("ask_agent.placeholder"),
-            label_visibility="collapsed",
-            key="ask_agent_question",
-        )
-        if st.button(t("ask_agent.send"), type="primary", key="ask_agent_send"):
-            if not user_question:
-                st.warning(t("ask_agent.empty"))
-            else:
-                st.session_state["ask_agent_run"] = {
-                    "question": user_question,
-                    "ts": time.time(),
-                }
+st.title(t("dashboard.title"))
 
-# Streamed Ask Agent output lives in the main body (popover is submit-only).
-_ask_run = st.session_state.get("ask_agent_run")
-if _ask_run and st.session_state.get("ask_agent_streamed_ts") != _ask_run.get("ts"):
-    from agent.core import run_ad_hoc_query_stream
-
-    st.subheader(t("ask_agent.response"))
-    with st.status(t("ask_agent.streaming"), expanded=True) as status:
-        tokens = []
-
-        def _token_gen():
-            for event in run_ad_hoc_query_stream(_ask_run["question"]):
-                etype = event.get("type")
-                text = event.get("text") or ""
-                if etype == "status":
-                    status.write(text)
-                elif etype == "token":
-                    tokens.append(text)
-                    yield text
-                elif etype == "error":
-                    status.update(label=t("ask_agent.error"), state="error")
-                    status.write(text)
-                    st.session_state["ask_agent_last_error"] = text
-                    return
-                elif etype == "done":
-                    st.session_state["ask_agent_last_response"] = text or "".join(tokens)
-                    status.update(label=t("ask_agent.done"), state="complete")
-
-        st.write_stream(_token_gen())
-    st.session_state["ask_agent_streamed_ts"] = _ask_run.get("ts")
-elif st.session_state.get("ask_agent_last_response"):
-    with st.expander(t("ask_agent.response"), expanded=False):
-        st.write(st.session_state["ask_agent_last_response"])
 
 def _load_open_holdings():
     """Load the current open holdings from the database."""
