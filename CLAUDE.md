@@ -145,7 +145,7 @@ Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted 
 
 ### Ask Agent is a global floating chat
 
-Ask Agent is a LangSmith-style FAB + floating panel rendered from `app/main.py` via `render_ask_agent_chat()` on every page (not Dashboard-only). Open/close and multi-turn thread live in `st.session_state`; streaming stays inside the panel. Theme CSS (`pa-ask-agent-root` / `pa-ask-agent-panel`) fixes **only the innermost** `stVerticalBlock` host bottom-right — a bare `:has(.pa-ask-agent-root)` also matches ancestor blocks and pins the whole page to the right. Theme CSS is re-injected every Streamlit rerun via `inject_cyberpunk_theme()`.
+Ask Agent is a LangSmith-style FAB + floating panel rendered from `app/main.py` via `render_ask_agent_chat()` inside its own `st.container()` on every page. Open/close and multi-turn thread live in `st.session_state`; streaming stays inside the panel. Docking uses JS (`inject_ask_agent_dock`) to mark only the deepest safe host with `.pa-ask-agent-dock-host` — never CSS `:has(.pa-ask-agent-root)` on `stVerticalBlock` (that matched the page block and pinned Dashboard to the right). Theme CSS is re-injected every Streamlit rerun via `inject_cyberpunk_theme()`.
 
 ### Do not name view folder `pages/`
 

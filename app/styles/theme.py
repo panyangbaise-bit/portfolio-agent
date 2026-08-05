@@ -228,3 +228,103 @@ def inject_locale_toggle(locale):
     import streamlit.components.v1 as components
 
     components.html(build_locale_toggle_html(locale), height=0, scrolling=False)
+
+
+def build_ask_agent_dock_html():
+    # type: () -> str
+    """JS that marks only the deepest safe Ask Agent host for fixed docking.
+
+    Streamlit nests Ask Agent under the main ``stVerticalBlock``. CSS
+    ``:has(.pa-ask-agent-root)`` therefore also matches the page block and
+    pins Dashboard content to the bottom-right. We walk the DOM, pick the
+    deepest vertical block that contains the marker, refuse hosts that also
+    contain main-page widgets, and toggle ``.pa-ask-agent-dock-host``.
+    """
+    return (
+        """
+<!DOCTYPE html>
+<html><head></head><body>
+<script>
+(function () {
+  const doc = window.parent.document;
+  const HOST = "pa-ask-agent-dock-host";
+  const OPEN = "pa-ask-agent-dock-open";
+
+  function looksLikeMainPage(block) {
+    if (!block) return true;
+    if (block.querySelector('[data-testid="stDataFrame"]')) return true;
+    if (block.querySelector('[data-testid="stMetric"]')) return true;
+    if (block.querySelector('h1')) return true;
+    if (block.querySelector('[data-testid="stSidebar"]')) return true;
+    const nested = block.querySelectorAll('[data-testid="stVerticalBlock"]').length;
+    if (nested > 8) return true;
+    return false;
+  }
+
+  function deepestBlockContaining(node) {
+    let best = null;
+    const blocks = doc.querySelectorAll('[data-testid="stVerticalBlock"]');
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (!b.contains(node)) continue;
+      if (!best || best.contains(b)) best = b;
+    }
+    return best;
+  }
+
+  function dock() {
+    const root = doc.querySelector(".pa-ask-agent-root");
+    if (!root) return false;
+
+    const host = deepestBlockContaining(root);
+    if (!host || looksLikeMainPage(host)) {
+      doc.querySelectorAll("." + HOST).forEach(function (el) {
+        el.classList.remove(HOST);
+        el.classList.remove(OPEN);
+      });
+      return false;
+    }
+
+    doc.querySelectorAll("." + HOST).forEach(function (el) {
+      if (el !== host) {
+        el.classList.remove(HOST);
+        el.classList.remove(OPEN);
+      }
+    });
+    host.classList.add(HOST);
+    if (doc.querySelector(".pa-ask-agent-panel")) {
+      host.classList.add(OPEN);
+    } else {
+      host.classList.remove(OPEN);
+    }
+    return true;
+  }
+
+  dock();
+  let tries = 0;
+  const timer = setInterval(function () {
+    tries += 1;
+    dock();
+    if (tries > 30) clearInterval(timer);
+  }, 100);
+
+  if (!window.__paAskAgentDockObs) {
+    window.__paAskAgentDockObs = new MutationObserver(function () { dock(); });
+    window.__paAskAgentDockObs.observe(doc.body, { childList: true, subtree: true });
+  }
+"""
+        + _hide_iframe_host_js()
+        + """
+})();
+</script>
+</body></html>
+"""
+    )
+
+
+def inject_ask_agent_dock():
+    # type: () -> None
+    """After Ask Agent widgets render, dock the leaf host bottom-right."""
+    import streamlit.components.v1 as components
+
+    components.html(build_ask_agent_dock_html(), height=0, scrolling=False)

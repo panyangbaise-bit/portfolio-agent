@@ -122,7 +122,9 @@ with open(page_path) as f:
 
 from app.components.ask_agent_chat import render_ask_agent_chat
 
-render_ask_agent_chat()
+# Own nested vertical block so dock JS can target Ask Agent without the page.
+with st.container():
+    render_ask_agent_chat()
 
 import atexit
 atexit.register(stop_scheduler)

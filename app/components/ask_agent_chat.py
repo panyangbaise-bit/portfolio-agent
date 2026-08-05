@@ -124,6 +124,9 @@ def render_ask_agent_chat() -> None:
         # Collapse hides UI; if a run is in flight, still drain so it can finish.
         if pending:
             _finish_pending(pending, messages, show_ui=False)
+        from app.styles.theme import inject_ask_agent_dock
+
+        inject_ask_agent_dock()
         return
 
     st.markdown(
@@ -180,3 +183,7 @@ def render_ask_agent_chat() -> None:
                 st.session_state["ask_agent_busy"] = True
                 st.session_state["ask_agent_open"] = True
                 st.rerun()
+
+    from app.styles.theme import inject_ask_agent_dock
+
+    inject_ask_agent_dock()

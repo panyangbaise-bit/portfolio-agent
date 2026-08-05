@@ -346,9 +346,10 @@ button.pa-locale-toggle:hover {
 }
 
 /* ── Ask Agent floating chat (LangSmith-style FAB + panel) ──
-   Marker divs are hidden. ONLY the innermost stVerticalBlock that contains
-   the marker is fixed — a bare :has(.pa-ask-agent-root) also matches ancestor
-   blocks (the whole page) and pins Dashboard content to the bottom-right. */
+   Do NOT position:fixed via :has(.pa-ask-agent-root) on stVerticalBlock —
+   Ask Agent shares / nests under the main page block, so :has pins the whole
+   Dashboard to the bottom-right. JS (inject_ask_agent_dock) marks ONLY the
+   deepest safe host with .pa-ask-agent-dock-host. */
 .pa-ask-agent-root,
 .pa-ask-agent-panel {
   display: none !important;
@@ -358,10 +359,7 @@ button.pa-locale-toggle:hover {
   pointer-events: none !important;
 }
 
-/* Innermost host only: has the marker, but no nested vertical block that has it. */
-div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
-  :has([data-testid="stVerticalBlock"] .pa-ask-agent-root)
-) {
+.pa-ask-agent-dock-host {
   position: fixed !important;
   right: 1rem !important;
   bottom: 1rem !important;
@@ -374,9 +372,7 @@ div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
   box-shadow: none !important;
 }
 
-div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-panel):not(
-  :has([data-testid="stVerticalBlock"] .pa-ask-agent-panel)
-) {
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open {
   width: min(360px, calc(100vw - 1.5rem)) !important;
   max-height: min(520px, calc(100vh - 2rem)) !important;
   overflow-x: hidden !important;
@@ -390,14 +386,8 @@ div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-panel):not(
   padding: 0.55rem 0.7rem 0.8rem !important;
 }
 
-/* Collapsed FAB — circular primary button (innermost host only) */
-div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
-  :has([data-testid="stVerticalBlock"] .pa-ask-agent-root)
-):not(:has(.pa-ask-agent-panel))
-  button[kind="primary"],
-div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
-  :has([data-testid="stVerticalBlock"] .pa-ask-agent-root)
-):not(:has(.pa-ask-agent-panel))
+.pa-ask-agent-dock-host:not(.pa-ask-agent-dock-open) button[kind="primary"],
+.pa-ask-agent-dock-host:not(.pa-ask-agent-dock-open)
   button[data-testid="baseButton-primary"] {
   border-radius: 999px !important;
   width: 3rem !important;
@@ -410,9 +400,7 @@ div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
 }
 
 @media (max-width: 768px) {
-  div[data-testid="stVerticalBlock"]:has(.pa-ask-agent-root):not(
-    :has([data-testid="stVerticalBlock"] .pa-ask-agent-root)
-  ) {
+  .pa-ask-agent-dock-host {
     right: 0.75rem !important;
     bottom: 0.75rem !important;
   }

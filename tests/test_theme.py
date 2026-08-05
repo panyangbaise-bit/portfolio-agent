@@ -70,15 +70,23 @@ def test_locale_toggle_is_parent_anchor_not_iframe_navigation():
     assert '"en"' in html_zh
 
 
-def test_ask_agent_fixed_css_targets_innermost_vertical_block_only():
-    """Ancestor :has(.pa-ask-agent-root) would pin the whole page to the right."""
+def test_ask_agent_fixed_css_targets_dock_host_class_not_has_selector():
+    """:has(.pa-ask-agent-root) on stVerticalBlock pins the whole page — forbidden."""
     css = load_cyberpunk_css()
     start = css.index("Ask Agent floating chat")
     ask_css = css[start:]
-    assert "pa-ask-agent-root" in ask_css
+    assert ".pa-ask-agent-dock-host" in ask_css
     assert "position: fixed" in ask_css
-    assert ":not(" in ask_css
-    fixed_pos = ask_css.find("position: fixed")
-    selector_region = ask_css[max(0, fixed_pos - 320) : fixed_pos]
-    assert "pa-ask-agent-root" in selector_region
-    assert '[data-testid="stVerticalBlock"] .pa-ask-agent-root' in selector_region
+    # Actual selector (not the warning comment) must not fix via :has on VerticalBlock.
+    assert 'stVerticalBlock"]:has(.pa-ask-agent-root)' not in ask_css
+    assert "stVerticalBlock]:has(.pa-ask-agent-root)" not in ask_css
+
+
+def test_ask_agent_dock_js_refuses_main_page_hosts():
+    from app.styles.theme import build_ask_agent_dock_html
+
+    html = build_ask_agent_dock_html()
+    assert "pa-ask-agent-dock-host" in html
+    assert "looksLikeMainPage" in html
+    assert "stDataFrame" in html
+    assert "deepestBlockContaining" in html
