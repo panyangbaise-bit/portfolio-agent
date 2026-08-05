@@ -182,7 +182,7 @@ def _format_params(params) -> str:
 
 
 def render_agent_session_detail(limit: int = 50):
-    """Browse agent sessions with summary, recommendation reasoning, and tool calls."""
+    """Browse agent sessions with summary, saved recommendations, and tool calls."""
     st.subheader(t("jobs.detail.title"))
 
     filter_options = [""] + list(JOB_IDS) + ["ask_agent"]
@@ -271,8 +271,9 @@ def render_agent_session_detail(limit: int = 50):
                         date=_fmt_time(rec["created_at"]),
                     )
                 )
-                st.markdown(f"**{t('col.reasoning')}**")
-                st.write(rec["reasoning"])
+                # recommendation.reasoning is the saved decision rationale (not DeepSeek thinking)
+                if rec.get("reasoning"):
+                    st.write(rec["reasoning"])
 
     st.markdown(f"**{t('jobs.detail.tools')}**")
     tools = detail.get("tool_calls") or []

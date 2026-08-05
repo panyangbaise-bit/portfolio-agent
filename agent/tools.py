@@ -6,9 +6,10 @@ or databases — it just calls these functions.
 """
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Optional, TypeVar
+from typing import Annotated, Callable, List, Optional, TypeVar
 
 from langchain.tools import tool
+from langgraph.prebuilt import InjectedState
 
 from db.repository import (
     get_session, get_open_holdings, get_holding_by_ticker,
@@ -589,8 +590,8 @@ def save_recommendation(
     reasoning: str = "",
     confidence: float = 0.0,
     urgency: str = "low",
-    session_id: int = 0,
     recommendations: Optional[list] = None,
+    session_id: Annotated[int, InjectedState("session_id")] = 0,
 ) -> dict:
     """保存投资建议。支持单个和批量模式。
 
@@ -602,18 +603,27 @@ def save_recommendation(
     Args:
         ticker: 标的代码（单条模式，传空则在 recommendations 中批量）
         action: 建议操作（单条模式）
-        reasoning: 推理链条（单条模式）
+        reasoning: 建议理由（单条模式；写入 recommendations.reasoning，非模型 thinking）
         confidence: 置信度（单条模式）
         urgency: 紧迫度（单条/批量共用）
-        session_id: agent会话ID（自动传入）
         recommendations: 批量建议列表，每条为 {ticker, action, reasoning, confidence, urgency}
 
     Returns:
         dict: 单条时 status=saved|skipped_routine|skipped_unchanged
               批量时 {"batch": true, "results": [{status, ...}, ...], "total": N, "saved": N}
     """
+    # session_id is InjectedState from LangGraph — never trust the LLM to pass it.
     # ── Batch mode ──
     if recommendations and isinstance(recommendations, list) and len(recommendations) > 0:
+        if not session_id:
+            return {
+                "batch": True,
+                "results": [],
+                "total": 0,
+                "saved": 0,
+                "status": "error",
+                "message": "session_id missing — cannot save recommendation",
+            }
         db_session = get_session()
         try:
             results = []
@@ -662,6 +672,13 @@ def save_recommendation(
             "action": action_n,
             "urgency": urgency_n,
             "message": "日常 hold 不写入待处理建议；请在回复中给出文字分析即可。",
+        }
+
+    if not session_id:
+        return {
+            "status": "error",
+            "ticker": (ticker or "").upper(),
+            "message": "session_id missing — cannot save recommendation",
         }
 
     db_session = get_session()

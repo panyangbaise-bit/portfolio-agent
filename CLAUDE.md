@@ -63,7 +63,7 @@ db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migratio
 scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly trade review
 notifier/     Telegram Bot (send-only; no getUpdates long-poll)
 config.py     Central config from env vars (+ LangSmith env bootstrap)
-tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, and agent session detail
+tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, agent session detail, and recommendation session_id injection/backfill
 ```
 
 **Agent flow:** Market adapter → LangChain tool → LangGraph agent → recommendation/session → SQLite → Dashboard.
@@ -117,11 +117,15 @@ Crypto adapter sets `cg.session.timeout = 10`. The dashboard-wide concurrent fet
 
 ### Agent sessions store job metadata
 
-`agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). **Jobs** page shows **Job Runtime Log** via `list_job_runs()`, plus **Agent Session Detail** (summary, recommendation `reasoning`, tool-call timeline) via `list_analysis_runs()` / `get_agent_session_detail()`. Tool calls are persisted by the logging `tools` node in `agent/graph.py` into `agent_tool_calls` (full params/results, 100k-char safety cap). Older `agent_sessions` rows may have null `job_id`/`market` or empty tool logs until new runs complete.
+`agent_sessions` has `job_id`, `market`, and `summary` (via migrations `v2*`). **Jobs** page shows **Job Runtime Log** via `list_job_runs()`, plus **Agent Session Detail** (summary, recommendations, tool-call timeline) via `list_analysis_runs()` / `get_agent_session_detail()`. Tool calls are persisted by the logging `tools` node in `agent/graph.py` into `agent_tool_calls` (full params/results, 100k-char safety cap). Older `agent_sessions` rows may have null `job_id`/`market` or empty tool logs until new runs complete.
 
 ### Recommendation noise reduction
 
 Jobs are **not** required to emit clickable recommendations every run. Prompt asks the agent to call `get_recommendation_history` first and default to text-only analysis. `save_recommendation` enforces: skip routine `hold`+`low`; skip if same ticker already has pending same `action`, or a same `action`+`urgency` within 7 days (`find_similar_recommendation`). Skips return `skipped_routine` / `skipped_unchanged` without creating rows.
+
+### `save_recommendation.session_id` is InjectedState
+
+`session_id` is injected from LangGraph state via `Annotated[int, InjectedState("session_id")]` — it is hidden from the LLM tool schema. Never rely on the model to pass it (historical bug: every rec defaulted to `session_id=0`, so Jobs → Agent Session Detail showed "No recommendations"). Migration `v6_backfill_recommendation_session_ids` relinks orphans using `agent_tool_calls` rows that already stored the correct session + `recommendation_id`. DeepSeek thinking (`reasoning_content`) is **not** persisted; `recommendations.reasoning` is the saved decision rationale only.
 
 ### Scheduler outcomes are persisted
 
@@ -133,7 +137,7 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 ### Manual job triggers
 
-**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the schedule table, **News poll schedule (crontab)** edits a 5-field cron (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, recommendation reasoning, and tool calls.
+**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the schedule table, **News poll schedule (crontab)** edits a 5-field cron (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, saved recommendations, and tool calls.
 
 ### Localization
 
