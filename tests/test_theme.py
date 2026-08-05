@@ -77,17 +77,8 @@ def test_ask_agent_fixed_css_targets_innermost_vertical_block_only():
     ask_css = css[start:]
     assert "pa-ask-agent-root" in ask_css
     assert "position: fixed" in ask_css
-    # Innermost host: exclude ancestors that nest another stVerticalBlock + marker.
-    assert '[data-testid="stVerticalBlock"] .pa-ask-agent-root' in ask_css
     assert ":not(" in ask_css
-    # Every fixed rule in this section must sit behind the nested exclusion.
-    for chunk in ask_css.split("position: fixed"):
-        if "pa-ask-agent" in chunk or "stVerticalBlock" in chunk:
-            # selector is before the split point — check preceding text via join
-            pass
     fixed_pos = ask_css.find("position: fixed")
     selector_region = ask_css[max(0, fixed_pos - 320) : fixed_pos]
     assert "pa-ask-agent-root" in selector_region
-    assert 'stVerticalBlock"] .pa-ask-agent-root' in selector_region or (
-        "[data-testid=\"stVerticalBlock\"] .pa-ask-agent-root" in selector_region
-    )
+    assert '[data-testid="stVerticalBlock"] .pa-ask-agent-root' in selector_region
