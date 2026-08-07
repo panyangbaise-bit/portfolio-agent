@@ -48,6 +48,15 @@ class Config:
     # Scheduler / agent run limits
     # Overall LangGraph invoke budget (multi-round tools + LLM). Must be >= DEEPSEEK_TIMEOUT.
     AGENT_RUN_TIMEOUT: float = float(os.environ.get("AGENT_RUN_TIMEOUT", "1200"))
+    # Per tool-call wall-clock timeout (seconds) inside the LangGraph tools node.
+    TOOL_CALL_TIMEOUT: float = float(os.environ.get("TOOL_CALL_TIMEOUT", "120"))
+    # Halt the agent when the same tool+params is requested this many times.
+    TOOL_IDENTICAL_CALL_LIMIT: int = int(os.environ.get("TOOL_IDENTICAL_CALL_LIMIT", "3"))
+    # Max tool-enabled LLM rounds per LangGraph invoke (~2× typical 6-step task).
+    # One final no-tools synthesis is allowed after the limit if tools just returned.
+    AGENT_MAX_ROUNDS: int = int(os.environ.get("AGENT_MAX_ROUNDS", "12"))
+    # Ask Agent: keep last N user/assistant pairs as LLM history (not cumulative rounds).
+    ASK_AGENT_HISTORY_TURNS: int = int(os.environ.get("ASK_AGENT_HISTORY_TURNS", "6"))
     # Default news poll: 08:00–22:00 Asia/Shanghai every 2 hours (editable on Jobs page).
     # 5-field crontab: minute hour day month day_of_week
     DEFAULT_NEWS_CRONTAB: str = os.environ.get("NEWS_CRONTAB", "0 8-22/2 * * *")

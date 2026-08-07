@@ -1,6 +1,6 @@
 """Global LangSmith-style floating Ask Agent chat (FAB + panel)."""
 
-from typing import List
+from typing import List, Optional
 
 import streamlit as st
 
@@ -13,12 +13,15 @@ def _ensure_state() -> None:
     st.session_state.setdefault("ask_agent_messages", [])
     st.session_state.setdefault("ask_agent_pending", None)
     st.session_state.setdefault("ask_agent_busy", False)
+    st.session_state.setdefault("ask_agent_db_session_id", None)
 
 
 def _clear_thread() -> None:
     st.session_state["ask_agent_messages"] = []
     st.session_state["ask_agent_pending"] = None
     st.session_state["ask_agent_busy"] = False
+    # New chat → new Jobs history row on the next question.
+    st.session_state["ask_agent_db_session_id"] = None
 
 
 def _history_for_stream(messages: List[dict], pending: str) -> List[dict]:
@@ -48,9 +51,26 @@ def _finish_pending(pending: str, messages: List[dict], show_ui: bool) -> None:
     from agent.core import run_ad_hoc_query_stream
 
     history = _history_for_stream(messages, pending)
+    db_session_id: Optional[int] = st.session_state.get("ask_agent_db_session_id")
     tokens = []
     final_text = ""
     errored = False
+
+    def _consume(event: dict) -> None:
+        nonlocal final_text, errored, db_session_id
+        etype = event.get("type")
+        text = event.get("text") or ""
+        sid = event.get("session_id")
+        if sid:
+            db_session_id = sid
+            st.session_state["ask_agent_db_session_id"] = sid
+        if etype == "token":
+            tokens.append(text)
+        elif etype == "error":
+            errored = True
+            final_text = f"{t('ask_agent.error')} {text}"
+        elif etype == "done":
+            final_text = text or "".join(tokens)
 
     if show_ui:
         with st.chat_message("assistant"):
@@ -58,9 +78,16 @@ def _finish_pending(pending: str, messages: List[dict], show_ui: bool) -> None:
 
                 def _token_gen():
                     nonlocal final_text, errored
-                    for event in run_ad_hoc_query_stream(pending, history=history):
+                    for event in run_ad_hoc_query_stream(
+                        pending,
+                        history=history,
+                        session_id=db_session_id,
+                    ):
                         etype = event.get("type")
                         text = event.get("text") or ""
+                        sid = event.get("session_id")
+                        if sid:
+                            st.session_state["ask_agent_db_session_id"] = sid
                         if etype == "status":
                             status_box.write(text)
                         elif etype == "token":
@@ -78,17 +105,14 @@ def _finish_pending(pending: str, messages: List[dict], show_ui: bool) -> None:
 
                 st.write_stream(_token_gen())
     else:
-        for event in run_ad_hoc_query_stream(pending, history=history):
-            etype = event.get("type")
-            text = event.get("text") or ""
-            if etype == "token":
-                tokens.append(text)
-            elif etype == "error":
-                errored = True
-                final_text = f"{t('ask_agent.error')} {text}"
+        for event in run_ad_hoc_query_stream(
+            pending,
+            history=history,
+            session_id=db_session_id,
+        ):
+            _consume(event)
+            if errored:
                 break
-            elif etype == "done":
-                final_text = text or "".join(tokens)
 
     if not final_text and tokens and not errored:
         final_text = "".join(tokens)

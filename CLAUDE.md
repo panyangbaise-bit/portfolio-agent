@@ -35,6 +35,10 @@ Copy `.env.example` to `.env`:
 | `DEEPSEEK_THINKING` | No | `true` (thinking mode) |
 | `DEEPSEEK_TIMEOUT` | No | `300` (seconds; per chat/completions HTTP call) |
 | `AGENT_RUN_TIMEOUT` | No | `900` (seconds; whole LangGraph invoke) |
+| `TOOL_CALL_TIMEOUT` | No | `120` (seconds; per tool invoke in tools node) |
+| `TOOL_IDENTICAL_CALL_LIMIT` | No | `3` (same tool+params → halt loop) |
+| `AGENT_MAX_ROUNDS` | No | `12` (tool-enabled LLM rounds per invoke; +1 final no-tools synthesis) |
+| `ASK_AGENT_HISTORY_TURNS` | No | `6` (Ask Agent keeps last N Q/A pairs as context) |
 | `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (08:00–22:00 every 2h; editable on Jobs page) |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` (Beijing; UI display) |
 | `AUTH_ENABLED` | No | `false` (set `true` before public deploy) |
@@ -135,6 +139,16 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 `DEEPSEEK_TIMEOUT` (default 300s) is passed to ChatOpenAI as the per-request HTTP timeout so a hung `chat/completions` read cannot block forever. `AGENT_RUN_TIMEOUT` (default 900s) wraps each `agent_graph.invoke` in `agent/core.py`; on expiry the agent session is marked `failed` and jobs surface `AgentRunTimeout` → `job_runs.status=failed`. A late `finish()` after timeout does not overwrite `failed`.
 
+### Tool-call timeout and loop guard
+
+`agent/tool_guards.py` replaces LangGraph `ToolNode`: every tool invoke runs under `TOOL_CALL_TIMEOUT` (default 120s) via `ThreadPoolExecutor`; timeouts return `{"error":"timeout",...}` as the tool result. Identical `(tool name, params)` fingerprints are counted across prior AI tool_calls and the current batch; on the Nth request (`TOOL_IDENTICAL_CALL_LIMIT`, default 3) that call is not executed, `tool_loop_halted` is set, and the graph ends after a short closing AIMessage (no further LLM tool rounds).
+
+`AGENT_MAX_ROUNDS` (default 12) caps tool-enabled LLM rounds per LangGraph invoke (~2× a typical 6-step job). If the last tool-enabled round still requested tools, one final no-tools synthesis is allowed so results are not dropped.
+
+### Ask Agent multi-turn session
+
+Follow-ups in the floating chat reuse one `agent_sessions` row (`job_id=ask_agent`) via `ask_agent_db_session_id` in Streamlit state + `AgentSessionManager.resume()`. Summaries append as `Q: … / A: …` blocks separated by `---`. **New chat** clears the DB session id so the next question creates a fresh Jobs history row. LLM context is trimmed to `ASK_AGENT_HISTORY_TURNS` pairs (default 6); the round limit still applies per question, not across the thread.
+
 ### Manual job triggers
 
 **Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the schedule table, **News poll schedule (crontab)** edits a 5-field cron (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, saved recommendations, and tool calls.
@@ -145,7 +159,7 @@ Use `app.i18n.t()` for user-visible UI strings and `enum_label()` for persisted 
 
 ### Ask Agent is a global floating chat
 
-Ask Agent is a LangSmith-style FAB + floating panel rendered from `app/main.py` via `render_ask_agent_chat()` inside its own `st.container()` on every page. Open/close and multi-turn thread live in `st.session_state`; streaming stays inside the panel. Docking uses JS (`inject_ask_agent_dock`) to mark only the deepest safe host with `.pa-ask-agent-dock-host` — never CSS `:has(.pa-ask-agent-root)` on `stVerticalBlock`, and never reject hosts for nested-block depth (mid-reply undock). Open panel is `resize: both` with size persisted in `localStorage`; input form is sticky at the panel bottom. Theme CSS is re-injected every Streamlit rerun via `inject_cyberpunk_theme()`.
+Ask Agent is a LangSmith-style FAB + floating panel rendered from `app/main.py` via `render_ask_agent_chat()` inside its own `st.container()` on every page. Open/close and multi-turn thread live in `st.session_state`; streaming stays inside the panel. Multi-turn follow-ups share one `agent_sessions` row until **New chat**. Docking uses JS (`inject_ask_agent_dock`) to mark only the deepest safe host with `.pa-ask-agent-dock-host` — never CSS `:has(.pa-ask-agent-root)` on `stVerticalBlock`, and never reject hosts for nested-block depth (mid-reply undock). Open panel is `resize: both` with size persisted in `localStorage`; input form is sticky at the panel bottom. Theme CSS is re-injected every Streamlit rerun via `inject_cyberpunk_theme()`.
 
 ### Do not name view folder `pages/`
 

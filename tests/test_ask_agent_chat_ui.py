@@ -105,6 +105,22 @@ def test_dashboard_has_no_inline_ask_agent():
     assert "run_ad_hoc_query_stream" not in text
 
 
+def test_clear_thread_resets_db_session_id(monkeypatch):
+    st = FakeSt()
+    st.session_state.update({
+        "ask_agent_messages": [{"role": "user", "content": "hi"}],
+        "ask_agent_db_session_id": 99,
+        "ask_agent_pending": "x",
+        "ask_agent_busy": True,
+    })
+    monkeypatch.setattr(ask_agent_chat, "st", st)
+    ask_agent_chat._clear_thread()
+    assert st.session_state["ask_agent_messages"] == []
+    assert st.session_state["ask_agent_db_session_id"] is None
+    assert st.session_state["ask_agent_pending"] is None
+    assert st.session_state["ask_agent_busy"] is False
+
+
 def test_history_for_stream_strips_pending_user_turn():
     messages = [
         {"role": "user", "content": "first"},

@@ -39,6 +39,26 @@ def test_end_agent_session_failed_not_overwritten_by_completed(db_factory):
         db.close()
 
 
+def test_ask_agent_resume_appends_summary(db_factory):
+    mgr1 = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
+    sid = mgr1.start()
+    mgr1.finish(summary="Q: first\nA: ans1")
+
+    mgr2 = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
+    assert mgr2.resume(sid) == sid
+    mgr2.finish(summary="Q: follow\nA: ans2")
+
+    db = db_factory()
+    try:
+        row = db.query(AgentSession).filter_by(id=sid).one()
+        assert row.status == "completed"
+        assert "Q: first" in (row.summary or "")
+        assert "Q: follow" in (row.summary or "")
+        assert "---" in (row.summary or "")
+    finally:
+        db.close()
+
+
 def test_invoke_agent_marks_session_failed_on_timeout(monkeypatch, db_factory):
     monkeypatch.setattr("agent.core.config.AGENT_RUN_TIMEOUT", 0.05)
 

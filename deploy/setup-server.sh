@@ -77,8 +77,36 @@ pull_app_repo() {
   log "当前提交：$(git -C "${dir}" rev-parse --short HEAD)"
 }
 
+rsync_repo_to_app_dir() {
+  log "从 ${REPO_ROOT} 同步代码到 ${APP_DIR}"
+  mkdir -p "${APP_DIR}"
+  # Prefer rsync when available; fall back to tar.
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete \
+      --exclude '.venv' \
+      --exclude '.git' \
+      --exclude 'portfolio.db' \
+      --exclude 'data/ip_blacklist.json' \
+      --exclude '.env' \
+      "${REPO_ROOT}/" "${APP_DIR}/"
+  else
+    tar -C "${REPO_ROOT}" \
+      --exclude='.venv' --exclude='.git' --exclude='portfolio.db' \
+      --exclude='data/ip_blacklist.json' --exclude='.env' \
+      -cf - . | tar -C "${APP_DIR}" -xf -
+  fi
+}
+
 sync_app_code() {
-  # Recommended path: run from /opt/portfolio-agent → pull latest main.
+  # Canonical: APP_DIR is already a git checkout → always sync from origin.
+  # Do this BEFORE any rsync-from-workspace path, otherwise a stale clone under
+  # ~/proj (or similar) overwrites /opt with months-old code.
+  if [[ -d "${APP_DIR}/.git" ]]; then
+    pull_app_repo "${APP_DIR}"
+    return
+  fi
+
+  # Recommended path: run from /opt/portfolio-agent (REPO_ROOT == APP_DIR).
   if [[ -f "${REPO_ROOT}/app/main.py" && -f "${REPO_ROOT}/requirements.txt" ]]; then
     if [[ "${REPO_ROOT}" == "${APP_DIR}" ]]; then
       log "使用当前仓库目录：${APP_DIR}"
@@ -89,29 +117,15 @@ sync_app_code() {
       fi
       return
     fi
-    log "从 ${REPO_ROOT} 同步代码到 ${APP_DIR}"
-    mkdir -p "${APP_DIR}"
-    # Prefer rsync when available; fall back to tar.
-    if command -v rsync >/dev/null 2>&1; then
-      rsync -a --delete \
-        --exclude '.venv' \
-        --exclude '.git' \
-        --exclude 'portfolio.db' \
-        --exclude 'data/ip_blacklist.json' \
-        --exclude '.env' \
-        "${REPO_ROOT}/" "${APP_DIR}/"
-    else
-      mkdir -p "${APP_DIR}"
-      tar -C "${REPO_ROOT}" \
-        --exclude='.venv' --exclude='.git' --exclude='portfolio.db' \
-        --exclude='data/ip_blacklist.json' --exclude='.env' \
-        -cf - . | tar -C "${APP_DIR}" -xf -
-    fi
-    return
-  fi
 
-  if [[ -d "${APP_DIR}/.git" ]]; then
-    pull_app_repo "${APP_DIR}"
+    # Script invoked from another tree (e.g. ~/proj/...): update that tree from
+    # origin first, then seed APP_DIR. Never rsync a dirty/stale workspace as-is.
+    if [[ -d "${REPO_ROOT}/.git" ]]; then
+      pull_app_repo "${REPO_ROOT}"
+    else
+      log "WARN: ${REPO_ROOT} 无 .git，rsync 使用本地文件（可能不是最新）"
+    fi
+    rsync_repo_to_app_dir
     return
   fi
 

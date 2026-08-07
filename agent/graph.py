@@ -11,16 +11,17 @@ Uses DeepSeek API via ChatOpenAI (OpenAI-compatible interface).
 
 from typing import Annotated, Any, Optional
 
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 
 from agent.llm import build_deepseek_llm
 from agent.system_prompt import SYSTEM_PROMPT
+from agent.tool_guards import execute_tool_calls
 from agent.tools import ALL_TOOLS
 from app.timeutil import format_now_for_agent
+from config import config
 from db.repository import get_session, log_tool_call
 
 # Extreme safety cap only — normal tool results are stored in full.
@@ -32,6 +33,9 @@ class AgentState(TypedDict):
     session_id: int
     triggered_by: str
     extra_context: str
+    tool_loop_halted: NotRequired[bool]
+    # Count of tool-enabled LLM rounds completed in this invoke.
+    agent_rounds: NotRequired[int]
 
 
 def _truncate_result(text: Any) -> Optional[str]:
@@ -94,38 +98,69 @@ def _persist_tool_calls(state: AgentState, tool_messages: list) -> None:
         db.close()
 
 
+def _with_system_prompt(state: AgentState, messages: list) -> list:
+    has_system = any(isinstance(m, SystemMessage) for m in messages)
+    if has_system:
+        return list(messages)
+    prompt = SYSTEM_PROMPT
+    extra = state.get("extra_context", "")
+    if extra:
+        prompt = prompt + "\n\n" + extra
+    prompt = prompt + "\n\n" + format_now_for_agent()
+    return [SystemMessage(content=prompt)] + list(messages)
+
+
 def build_agent_graph() -> StateGraph:
     """Build and compile the LangGraph agent graph with DeepSeek thinking mode."""
 
     llm = build_deepseek_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
-    base_tool_node = ToolNode(ALL_TOOLS)
 
     def agent_node(state: AgentState) -> dict:
         """Agent reasoning node. Calls the LLM with tools bound."""
-        messages = state["messages"]
+        if state.get("tool_loop_halted"):
+            # Identical-call / round guard already closed the loop.
+            return {
+                "messages": [
+                    AIMessage(
+                        content=(
+                            "Agent loop halted (identical tool call or round limit). "
+                            "Stopping without further tool calls."
+                        )
+                    )
+                ]
+            }
 
-        # Ensure system prompt is first
-        has_system = any(isinstance(m, SystemMessage) for m in messages)
-        if not has_system:
-            prompt = SYSTEM_PROMPT
-            extra = state.get("extra_context", "")
-            if extra:
-                prompt = prompt + "\n\n" + extra
-            prompt = prompt + "\n\n" + format_now_for_agent()
-            messages = [SystemMessage(content=prompt)] + list(messages)
+        rounds = int(state.get("agent_rounds") or 0)
+        max_rounds = int(config.AGENT_MAX_ROUNDS)
+        messages = _with_system_prompt(state, state["messages"])
+
+        # After AGENT_MAX_ROUNDS tool-enabled LLM calls, allow one final
+        # synthesis without tools so the last tool results are not dropped.
+        if rounds >= max_rounds:
+            response = llm.invoke(messages)
+            return {
+                "messages": [response],
+                "tool_loop_halted": True,
+            }
 
         response = llm_with_tools.invoke(messages)
-        return {"messages": [response]}
+        return {"messages": [response], "agent_rounds": rounds + 1}
 
     def tools_node(state: AgentState) -> dict:
-        """Execute tools, then persist full call args/results for the Jobs detail view."""
-        result = base_tool_node.invoke(state)
-        _persist_tool_calls(state, result.get("messages") or [])
-        return result
+        """Execute tools with timeout + loop guard, then persist call logs."""
+        result = execute_tool_calls(state, ALL_TOOLS)
+        tool_messages = result.get("messages") or []
+        _persist_tool_calls(state, tool_messages)
+        out = {"messages": tool_messages}
+        if result.get("tool_loop_halted"):
+            out["tool_loop_halted"] = True
+        return out
 
     def should_continue(state: AgentState) -> str:
         """Decide whether to call tools or end."""
+        if state.get("tool_loop_halted"):
+            return "end"
         last_message = state["messages"][-1]
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
             return "tools"
@@ -144,6 +179,7 @@ def build_agent_graph() -> StateGraph:
         should_continue,
         {"tools": "tools", "end": END},
     )
+    # Halted runs short-circuit in agent_node (closing AIMessage, no LLM).
     workflow.add_edge("tools", "agent")
 
     return workflow.compile()

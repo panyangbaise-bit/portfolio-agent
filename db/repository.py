@@ -282,11 +282,26 @@ def create_agent_session(session: Session, triggered_by: str,
     return s
 
 
+def reopen_agent_session(session: Session, session_id: int) -> Optional[AgentSession]:
+    """Re-open an existing session for another Ask Agent turn (same chat thread)."""
+    s = session.query(AgentSession).filter(AgentSession.id == session_id).first()
+    if not s:
+        return None
+    if s.status == "failed":
+        # Do not revive failed threads — caller should start a new session.
+        return None
+    s.status = "running"
+    s.ended_at = None
+    session.commit()
+    return s
+
+
 def end_agent_session(
     session: Session,
     session_id: int,
     summary: str = None,
     status: str = "completed",
+    append_summary: bool = False,
 ):
     """Mark an agent session terminal. Late 'completed' does not overwrite 'failed'."""
     s = session.query(AgentSession).filter(AgentSession.id == session_id).first()
@@ -297,7 +312,10 @@ def end_agent_session(
     s.status = status
     s.ended_at = datetime.now(timezone.utc)
     if summary is not None:
-        s.summary = summary
+        if append_summary and s.summary:
+            s.summary = f"{s.summary}\n\n---\n{summary}"
+        else:
+            s.summary = summary
     session.commit()
 
 

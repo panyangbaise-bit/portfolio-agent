@@ -11,8 +11,8 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
     class FakeSession:
         session_id = 7
 
-        def start(self):
-            return None
+        def start_or_resume(self, session_id=None):
+            return 7
 
         def finish(self, summary=""):
             events.append(("finish", summary))
@@ -66,7 +66,9 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
     assert "token" in types
     assert types[-1] == "done"
     assert "23%" in out[-1]["text"]
+    assert out[-1]["session_id"] == 7
     assert events[0][0] == "finish"
+    assert events[0][1].startswith("Q:")
 
 
 def test_run_ad_hoc_query_stream_includes_history_in_state(monkeypatch):
@@ -75,8 +77,8 @@ def test_run_ad_hoc_query_stream_includes_history_in_state(monkeypatch):
     class FakeSession:
         session_id = 9
 
-        def start(self):
-            return None
+        def start_or_resume(self, session_id=None):
+            return 9
 
         def finish(self, summary=""):
             return None

@@ -3,8 +3,11 @@
 from typing import Optional
 
 from db.repository import (
-    get_session, create_agent_session, end_agent_session,
+    get_session,
+    create_agent_session,
+    end_agent_session,
     log_tool_call,
+    reopen_agent_session,
 )
 
 
@@ -24,6 +27,7 @@ class AgentSessionManager:
         self.market = market
         self.session_id: Optional[int] = None
         self._tool_call_count = 0
+        self._resumed = False
 
     def start(self) -> int:
         db = get_session()
@@ -36,9 +40,31 @@ class AgentSessionManager:
                 market=self.market,
             )
             self.session_id = s.id
+            self._resumed = False
             return self.session_id
         finally:
             db.close()
+
+    def resume(self, session_id: int) -> int:
+        """Continue an Ask Agent chat thread on an existing DB session.
+
+        Falls back to ``start()`` if the row is missing or failed.
+        """
+        db = get_session()
+        try:
+            s = reopen_agent_session(db, session_id)
+            if s is None:
+                return self.start()
+            self.session_id = s.id
+            self._resumed = True
+            return self.session_id
+        finally:
+            db.close()
+
+    def start_or_resume(self, session_id: Optional[int] = None) -> int:
+        if session_id:
+            return self.resume(session_id)
+        return self.start()
 
     def record_tool_call(self, tool_name: str, params: dict = None, result_summary: str = None):
         if not self.session_id:
@@ -54,7 +80,13 @@ class AgentSessionManager:
         if self.session_id:
             db = get_session()
             try:
-                end_agent_session(db, self.session_id, summary=summary, status="completed")
+                end_agent_session(
+                    db,
+                    self.session_id,
+                    summary=summary,
+                    status="completed",
+                    append_summary=self._resumed,
+                )
             finally:
                 db.close()
 
@@ -63,7 +95,13 @@ class AgentSessionManager:
         if self.session_id:
             db = get_session()
             try:
-                end_agent_session(db, self.session_id, summary=summary, status="failed")
+                end_agent_session(
+                    db,
+                    self.session_id,
+                    summary=summary,
+                    status="failed",
+                    append_summary=self._resumed,
+                )
             finally:
                 db.close()
 

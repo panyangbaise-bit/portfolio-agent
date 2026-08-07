@@ -195,31 +195,48 @@ def _iter_answer_chunks(text: str, size: int = 48) -> Iterator[str]:
         yield text[i : i + size]
 
 
+def _trim_ask_agent_history(history: list, max_turns: int) -> list:
+    """Keep the last ``max_turns`` user/assistant pairs for Ask Agent context."""
+    if max_turns <= 0 or not history:
+        return []
+    trimmed = list(history[-(max_turns * 2) :])
+    while trimmed and (trimmed[0].get("role") or "").strip().lower() != "user":
+        trimmed = trimmed[1:]
+    return trimmed
+
+
 def run_ad_hoc_query_stream(
     question: str,
     history: Optional[list] = None,
+    session_id: Optional[int] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Stream Ask Agent progress for the floating chat (status + token events).
 
     Yields dicts:
       {"type": "status", "text": "..."}  — tool / node progress
       {"type": "token", "text": "..."}   — assistant answer deltas
-      {"type": "done", "text": "..."}    — full final answer
-      {"type": "error", "text": "..."}   — failure / timeout
+      {"type": "done", "text": "...", "session_id": int}  — final answer
+      {"type": "error", "text": "...", "session_id": int?}  — failure / timeout
 
     ``history`` is prior completed turns as ``{role, content}`` dicts
     (``user`` / ``assistant``). The current ``question`` is appended as a new
     HumanMessage and is not duplicated inside ``history``.
+
+    ``session_id`` reuses an existing ``agent_sessions`` row so multi-turn Ask
+    Agent follow-ups appear as one Jobs history record. Omit / None to create.
 
     Uses LangGraph ``stream_mode=["updates", "messages"]``. DeepSeek thinking
     mode keeps ``agent_node`` on ``invoke``; token events come from message
     chunks when available, otherwise the final agent update is chunked for UI.
     """
     session = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
-    session.start()
+    session.start_or_resume(session_id)
+
+    max_turns = int(config.ASK_AGENT_HISTORY_TURNS)
+    trimmed = _trim_ask_agent_history(history or [], max_turns)
 
     prior = []
-    for turn in history or []:
+    for turn in trimmed:
         if not isinstance(turn, dict):
             continue
         role = (turn.get("role") or "").strip().lower()
@@ -242,6 +259,7 @@ def run_ad_hoc_query_stream(
     deadline = time.monotonic() + timeout
     final_text = ""
     got_message_stream = False
+    sid = session.session_id
 
     try:
         for mode, chunk in agent_graph.stream(
@@ -249,8 +267,8 @@ def run_ad_hoc_query_stream(
         ):
             if time.monotonic() > deadline:
                 msg = f"Agent run timed out after {timeout:.0f}s"
-                session.fail(summary=msg)
-                yield {"type": "error", "text": msg}
+                session.fail(summary=f"Q: {question}\nA: {msg}")
+                yield {"type": "error", "text": msg, "session_id": sid}
                 return
 
             if mode == "messages":
@@ -301,11 +319,12 @@ def run_ad_hoc_query_stream(
                     for piece in _iter_answer_chunks(content):
                         yield {"type": "token", "text": piece}
 
-        session.finish(summary=final_text or "(empty)")
-        yield {"type": "done", "text": final_text}
+        turn_summary = f"Q: {question}\nA: {final_text or '(empty)'}"
+        session.finish(summary=turn_summary)
+        yield {"type": "done", "text": final_text, "session_id": sid}
     except Exception as exc:
-        session.fail(summary=str(exc))
-        yield {"type": "error", "text": str(exc)}
+        session.fail(summary=f"Q: {question}\nA: {exc}")
+        yield {"type": "error", "text": str(exc), "session_id": sid}
 
 
 def run_ad_hoc_query(question: str) -> str:
