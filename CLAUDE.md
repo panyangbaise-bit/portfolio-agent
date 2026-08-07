@@ -237,6 +237,8 @@ Before exposing the app on the public internet, set `AUTH_ENABLED=true` and `AUT
 
 On Ubuntu, use `sudo ./deploy/setup-server.sh` from a git checkout (or let it clone into `/opt/portfolio-agent`). The script installs a venv, writes a systemd unit from `deploy/portfolio-agent.service`, and starts `portfolio-agent` on port `8501`. Re-runs sync with `git fetch` + `reset --hard origin/main` (server-local commits are discarded; `.env` / `portfolio.db` / `data/` are preserved). Edit `.env` after first install, then `systemctl restart portfolio-agent`.
 
+**Sync order:** if `/opt/portfolio-agent` (or `APP_DIR`) already has `.git`, the script always updates **that** tree from `origin` — even when you invoke the script from another clone (e.g. `~/proj/portfolio-agent`). Only when `APP_DIR` has no `.git` does it fall back to rsync from `REPO_ROOT`, and in that case it `git pull`/`reset --hard` the source clone first so a stale workspace cannot freeze `/opt` on old commits. Preferred: `cd /opt/portfolio-agent && sudo ./deploy/setup-server.sh`.
+
 ## Maintenance Rule
 
 **After any major change** (new feature, schema change, adapter added, behavior modified), update this CLAUDE.md to reflect the new state. At minimum check:
