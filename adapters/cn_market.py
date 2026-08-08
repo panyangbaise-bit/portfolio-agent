@@ -1,12 +1,24 @@
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime
 import threading
 import time
-from typing import Optional
+from typing import List, Optional, Tuple
 import akshare as ak
 import pandas as pd
 
 from adapters.base import MarketAdapter
+from adapters.call_timeout import run_with_timeout, run_with_timeout_or_flag
 from adapters.cn_index_map import resolve_csi_index_code
+
+try:
+    from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
+except ImportError:  # pragma: no cover
+    from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
+
+# get_fund_info budgets — stay well under TOOL_CALL_TIMEOUT (120s).
+_FUND_OVERVIEW_TIMEOUT = 15.0
+_FUND_PART_TIMEOUT = 12.0
+_FUND_ENRICH_WALL_TIMEOUT = 25.0
 
 # stock_zh_a_spot_em downloads the full A-share board — reuse across parallel
 # get_price calls within a short window (agent batch / fund constituents).
@@ -170,25 +182,47 @@ class CNMarketAdapter(MarketAdapter):
             return {"ticker": ticker, "note": "no financial data available"}
 
     def get_fund_info(self, ticker: str, top_constituents: int = 20) -> dict:
-        """Fund/ETF overview: tracked index, fees, allocation, index constituents."""
+        """Fund/ETF overview with optional parallel enrichments (fees/alloc/constituents).
+
+        Overview (East Money) is required. Fees / allocation / constituents are
+        fetched in parallel under short per-call + wall-clock budgets; any miss
+        degrades to empty fields + notes instead of blocking the agent.
+        """
         code = (ticker or "").strip()
         if not code:
             return {"ticker": ticker, "error": "empty ticker"}
 
-        overview = self._fetch_fund_overview(code)
-        if overview.get("error") and not overview.get("name"):
-            return overview
+        overview, ov_timeout = run_with_timeout_or_flag(
+            self._fetch_fund_overview, _FUND_OVERVIEW_TIMEOUT, code,
+        )
+        if ov_timeout:
+            return {
+                "ticker": code,
+                "error": "timeout",
+                "message": f"fund overview timed out after {_FUND_OVERVIEW_TIMEOUT:.0f}s",
+            }
+        if not overview or (overview.get("error") and not overview.get("name")):
+            return overview or {"ticker": code, "error": "fund overview not found"}
 
         name = overview.get("name") or ""
         tracked = overview.get("tracked_index") or ""
         fund_kind = self._classify_fund_kind(name, overview.get("fund_type"))
         index_code = resolve_csi_index_code(tracked)
 
-        fees = self._fetch_fund_fees(code)
-        allocation = self._fetch_asset_allocation(code)
-        constituents, cons_source = self._fetch_index_constituents(
-            index_code, top_constituents,
-        )
+        # Fees often already present on East Money overview — prefer those.
+        fees = dict(overview.get("fees") or {})
+        allocation: list = []
+        constituents: list = []
+        cons_source: Optional[str] = None
+        degraded: List[str] = []
+
+        enrich = self._enrich_fund_info_parallel(code, index_code, top_constituents)
+        if enrich.get("fees"):
+            fees = {**fees, **enrich["fees"]}
+        allocation = enrich.get("asset_allocation") or []
+        constituents = enrich.get("constituents") or []
+        cons_source = enrich.get("constituents_source")
+        degraded.extend(enrich.get("degraded") or [])
 
         notes = []
         if fund_kind == "etf_feeder":
@@ -199,6 +233,8 @@ class CNMarketAdapter(MarketAdapter):
             notes.append(f"未能解析跟踪指数代码，仅返回名称：{tracked}")
         elif index_code and not constituents:
             notes.append(f"已解析指数代码 {index_code}，但成分股拉取失败或为空。")
+        for d in degraded:
+            notes.append(d)
 
         return {
             "ticker": code,
@@ -221,6 +257,70 @@ class CNMarketAdapter(MarketAdapter):
             "constituents_source": cons_source,
             "constituents_count": len(constituents),
             "notes": notes,
+            "degraded": degraded,
+        }
+
+    def _enrich_fund_info_parallel(
+        self,
+        code: str,
+        index_code: Optional[str],
+        top_constituents: int,
+    ) -> dict:
+        """Fetch fees / allocation / constituents in parallel with deadlines."""
+        degraded: List[str] = []
+        fees: dict = {}
+        allocation: list = []
+        constituents: list = []
+        cons_source: Optional[str] = None
+
+        pool = _PoolExecutor(max_workers=3)
+        try:
+            fut_fees = pool.submit(self._fetch_fund_fees_xq, code)
+            fut_alloc = pool.submit(self._fetch_asset_allocation, code)
+            fut_cons = pool.submit(
+                self._fetch_index_constituents, index_code, top_constituents,
+            )
+            deadline = time.monotonic() + _FUND_ENRICH_WALL_TIMEOUT
+
+            def _take(fut, label: str):
+                remaining = min(
+                    _FUND_PART_TIMEOUT,
+                    max(0.05, deadline - time.monotonic()),
+                )
+                try:
+                    return fut.result(timeout=remaining)
+                except FuturesTimeout:
+                    degraded.append(f"{label} timed out — skipped")
+                    return None
+                except Exception:
+                    degraded.append(f"{label} failed — skipped")
+                    return None
+
+            fees_xq = _take(fut_fees, "fees (xueqiu)")
+            if isinstance(fees_xq, dict) and fees_xq:
+                fees = fees_xq
+
+            alloc_res = _take(fut_alloc, "asset_allocation")
+            if isinstance(alloc_res, list) and alloc_res:
+                allocation = alloc_res
+
+            cons_res = _take(fut_cons, "constituents")
+            if isinstance(cons_res, tuple) and len(cons_res) == 2:
+                constituents, cons_source = cons_res
+                if not constituents and cons_source:
+                    degraded.append(
+                        f"constituents unavailable ({cons_source}) — skipped"
+                    )
+        finally:
+            # Do not wait for hung akshare workers after our deadlines.
+            pool.shutdown(wait=False)
+
+        return {
+            "fees": fees,
+            "asset_allocation": allocation,
+            "constituents": constituents,
+            "constituents_source": cons_source,
+            "degraded": degraded,
         }
 
     def _fetch_fund_overview(self, code: str) -> dict:
@@ -241,6 +341,20 @@ class CNMarketAdapter(MarketAdapter):
 
         code_raw = _cell("基金代码") or code
         code_clean = code_raw.split("（")[0].split("(")[0].strip()
+
+        # East Money overview already carries rate columns — prefer over Xueqiu.
+        fees = {}
+        for label, keys in (
+            ("基金管理费", ("管理费率",)),
+            ("基金托管费", ("托管费率",)),
+            ("销售服务费", ("销售服务费率",)),
+            ("最高申购费率", ("最高申购费率",)),
+            ("最高赎回费率", ("最高赎回费率",)),
+        ):
+            val = _cell(*keys)
+            if val:
+                fees[label] = val
+
         return {
             "ticker": code_clean,
             "name": _cell("基金简称"),
@@ -254,9 +368,11 @@ class CNMarketAdapter(MarketAdapter):
             "share_scale": _cell("份额规模"),
             "benchmark": _cell("业绩比较基准"),
             "tracked_index": _cell("跟踪标的"),
+            "fees": fees,
         }
 
-    def _fetch_fund_fees(self, code: str) -> dict:
+    def _fetch_fund_fees_xq(self, code: str) -> dict:
+        """Optional Xueqiu fee table — may hang; always call under timeout."""
         fees = {}
         try:
             df = ak.fund_individual_detail_info_xq(symbol=code)
@@ -273,7 +389,8 @@ class CNMarketAdapter(MarketAdapter):
                 fees[key] = value
         return fees
 
-    def _fetch_asset_allocation(self, code: str) -> list[dict]:
+    def _fetch_asset_allocation(self, code: str) -> list:
+        """Optional Xueqiu asset mix — try at most one recent quarter-end."""
         now = datetime.now()
         today = now.strftime("%Y%m%d")
         dates = []
@@ -282,47 +399,91 @@ class CNMarketAdapter(MarketAdapter):
                 d = f"{year}{md}"
                 if d <= today:
                     dates.append(d)
-        for date in dates:
-            try:
-                df = ak.fund_individual_detail_hold_xq(symbol=code, date=date)
-            except Exception:
-                continue
-            if df is None or df.empty:
-                continue
-            if "资产类型" not in df.columns or "仓位占比" not in df.columns:
-                continue
-            rows = []
-            for _, row in df.iterrows():
-                rows.append({
-                    "asset_type": str(row.get("资产类型")),
-                    "weight_pct": self._safe_float(row.get("仓位占比")),
-                    "as_of": date,
-                })
-            if rows:
-                return rows
-        return []
+        if not dates:
+            return []
+        date = dates[0]
+        try:
+            df = ak.fund_individual_detail_hold_xq(symbol=code, date=date)
+        except Exception:
+            return []
+        if df is None or df.empty:
+            return []
+        if "资产类型" not in df.columns or "仓位占比" not in df.columns:
+            return []
+        rows = []
+        for _, row in df.iterrows():
+            rows.append({
+                "asset_type": str(row.get("资产类型")),
+                "weight_pct": self._safe_float(row.get("仓位占比")),
+                "as_of": date,
+            })
+        return rows
 
-    def _fetch_index_constituents(self, index_code: Optional[str], top_n: int):
+    def _fetch_index_constituents(
+        self, index_code: Optional[str], top_n: int,
+    ) -> Tuple[list, Optional[str]]:
+        """Constituents: Sina first, CSI fallback — each attempt has its own timeout."""
         if not index_code:
             return [], None
+        limit = top_n if top_n and top_n > 0 else 20
+        source_budget = max(2.0, min(8.0, _FUND_PART_TIMEOUT / 2.0))
+
+        # 1) Sina newest-component (ak.index_stock_cons) — usually faster than CSI.
+        df = run_with_timeout(
+            ak.index_stock_cons, source_budget, index_code, default=None,
+        )
+        if df is not None:
+            parsed = self._parse_constituent_df(
+                df,
+                code_keys=("品种代码", "成分券代码", "代码"),
+                name_keys=("品种名称", "成分券名称", "名称"),
+                limit=limit,
+            )
+            if parsed:
+                return parsed, "sina_index_cons"
+
+        # 2) CSI official xls — historically hangs for minutes.
+        df = run_with_timeout(
+            ak.index_stock_cons_csindex, source_budget, index_code, default=None,
+        )
+        if df is None:
+            return [], "tracked_index_timeout"
         try:
-            df = ak.index_stock_cons_csindex(symbol=index_code)
+            parsed = self._parse_constituent_df(
+                df, code_keys=("成分券代码",), name_keys=("成分券名称",), limit=limit,
+            )
+            if parsed:
+                return parsed, "tracked_index"
         except Exception:
             return [], "tracked_index_error"
+        return [], "unavailable"
+
+    @staticmethod
+    def _parse_constituent_df(
+        df: Optional[pd.DataFrame],
+        code_keys: Tuple[str, ...],
+        name_keys: Tuple[str, ...],
+        limit: int,
+    ) -> list:
         if df is None or df.empty:
-            return [], "tracked_index"
-        code_col = "成分券代码" if "成分券代码" in df.columns else None
-        name_col = "成分券名称" if "成分券名称" in df.columns else None
+            return []
+        code_col = next((k for k in code_keys if k in df.columns), None)
         if not code_col:
-            return [], "tracked_index"
-        limit = top_n if top_n and top_n > 0 else 20
+            return []
+        name_col = next((k for k in name_keys if k in df.columns), None)
         out = []
         for _, row in df.head(limit).iterrows():
-            out.append({
-                "code": str(row[code_col]),
-                "name": str(row[name_col]) if name_col else None,
-            })
-        return out, "tracked_index"
+            raw_code = row[code_col]
+            if pd.isna(raw_code):
+                continue
+            code_s = str(raw_code).strip()
+            if code_s.endswith(".0"):
+                code_s = code_s[:-2]
+            name_s = None
+            if name_col is not None and pd.notna(row[name_col]):
+                name_s = str(row[name_col])
+            out.append({"code": code_s.zfill(6), "name": name_s})
+        return out
 
     @staticmethod
     def _classify_fund_kind(name: Optional[str], fund_type: Optional[str]) -> str:

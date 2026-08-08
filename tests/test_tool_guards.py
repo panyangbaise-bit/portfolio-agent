@@ -66,6 +66,16 @@ def test_invoke_tool_with_timeout_returns_error_payload():
     assert "0s" in result["message"] or "timed out" in result["message"].lower()
 
 
+def test_invoke_tool_with_timeout_does_not_block_on_shutdown():
+    """Regression: executor __exit__(wait=True) used to wait out the full tool."""
+    started = time.monotonic()
+    result = invoke_tool_with_timeout(slow_echo, {"text": "x"}, timeout=0.15)
+    elapsed = time.monotonic() - started
+    assert result["error"] == "timeout"
+    # slow_echo sleeps 2s; must return near the timeout, not after the sleep.
+    assert elapsed < 1.0
+
+
 def test_execute_tool_calls_runs_tool():
     state = {
         "messages": [

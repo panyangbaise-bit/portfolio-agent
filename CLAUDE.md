@@ -101,7 +101,7 @@ HK data now uses **yfinance** (akshare East Money API is unreliable). Ticker con
 
 ### CN fund / ETF detail (`get_fund_info`)
 
-Agent tool `get_fund_info` (CN only) returns overview via `fund_overview_em` (tracked index, fees, company), asset mix via `fund_individual_detail_hold_xq`, and approximate constituents from the tracked CSI index (`index_stock_cons_csindex`) after name→code resolution in `adapters/cn_index_map.py`. ETF联接 (e.g. `020357`) are tagged `fund_kind=etf_feeder`; constituents are index proxies, not季报持股明细. Extend the map when a new tracked index cannot be resolved.
+Agent tool `get_fund_info` (CN only): required overview via East Money `fund_overview_em` (includes fee columns). Optional enrichments (Xueqiu fees/allocation, index constituents) run **in parallel** under short budgets (`adapters/call_timeout.py`, `shutdown(wait=False)`). Constituents try Sina `index_stock_cons` first, then CSI `index_stock_cons_csindex`; misses degrade to empty + `notes`/`degraded` instead of hanging. ETF联接 (e.g. `020357`) are tagged `fund_kind=etf_feeder`. Extend `adapters/cn_index_map.py` when a tracked index cannot be resolved.
 
 ### Price snapshots and live fetching
 
@@ -141,7 +141,7 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 ### Tool-call timeout and loop guard
 
-`agent/tool_guards.py` replaces LangGraph `ToolNode`: every tool invoke runs under `TOOL_CALL_TIMEOUT` (default 120s) via LangSmith `ContextThreadPoolExecutor` (stdlib `ThreadPoolExecutor` drops contextvars and orphans tool runs as top-level LangSmith traces); timeouts return `{"error":"timeout",...}` as the tool result. Batch helpers in `agent/tools.py` and `_invoke_agent` use the same pool. Identical `(tool name, params)` fingerprints are counted across prior AI tool_calls and the current batch; on the Nth request (`TOOL_IDENTICAL_CALL_LIMIT`, default 3) that call is not executed, `tool_loop_halted` is set, and the graph ends after a short closing AIMessage (no further LLM tool rounds).
+`agent/tool_guards.py` replaces LangGraph `ToolNode`: every tool invoke runs under `TOOL_CALL_TIMEOUT` (default 120s) via LangSmith `ContextThreadPoolExecutor` (stdlib `ThreadPoolExecutor` drops contextvars and orphans tool runs as top-level LangSmith traces); timeouts return `{"error":"timeout",...}` as the tool result. On timeout the pool uses `shutdown(wait=False)` — do not wrap it in `with ThreadPoolExecutor` (`__exit__` waits for the hung worker and can still block 10+ minutes). Batch helpers in `agent/tools.py` and `_invoke_agent` use the same pool. Identical `(tool name, params)` fingerprints are counted across prior AI tool_calls and the current batch; on the Nth request (`TOOL_IDENTICAL_CALL_LIMIT`, default 3) that call is not executed, `tool_loop_halted` is set, and the graph ends after a short closing AIMessage (no further LLM tool rounds).
 
 `AGENT_MAX_ROUNDS` (default 12) caps tool-enabled LLM rounds per LangGraph invoke (~2× a typical 6-step job). If the last tool-enabled round still requested tools, one final no-tools synthesis is allowed so results are not dropped.
 

@@ -1,18 +1,11 @@
 """Tool-call timeout and identical-call loop guard for the agent graph."""
 
 import json
-from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.messages import ToolMessage
 
-# stdlib ThreadPoolExecutor drops contextvars → LangSmith tool runs become
-# orphan top-level traces. ContextThreadPoolExecutor keeps the parent run.
-try:
-    from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
-except ImportError:  # pragma: no cover
-    from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
-
+from adapters.call_timeout import run_with_timeout_or_flag
 from config import config
 
 
@@ -74,16 +67,14 @@ def _serialize_tool_result(result: Any) -> str:
 
 
 def invoke_tool_with_timeout(tool: Any, args: dict, timeout: float) -> Any:
-    """Run ``tool.invoke(args)`` with a wall-clock timeout."""
-    with _PoolExecutor(max_workers=1) as pool:
-        future = pool.submit(tool.invoke, args)
-        try:
-            return future.result(timeout=timeout)
-        except FuturesTimeout:
-            return {
-                "error": "timeout",
-                "message": f"Tool timed out after {timeout:.0f}s",
-            }
+    """Run ``tool.invoke(args)`` with a wall-clock timeout (abandon on hang)."""
+    result, timed_out = run_with_timeout_or_flag(tool.invoke, timeout, args)
+    if timed_out:
+        return {
+            "error": "timeout",
+            "message": f"Tool timed out after {timeout:.0f}s",
+        }
+    return result
 
 
 def execute_tool_calls(
