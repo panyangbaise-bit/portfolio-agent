@@ -5,11 +5,15 @@ interface to the LLM. The agent does not know about adapters, markets,
 or databases — it just calls these functions.
 """
 
-from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Callable, List, Optional, TypeVar
 
 from langchain.tools import tool
 from langgraph.prebuilt import InjectedState
+
+try:
+    from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
+except ImportError:  # pragma: no cover
+    from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
 from db.repository import (
     get_session, get_open_holdings, get_holding_by_ticker,
@@ -33,7 +37,7 @@ def _map_parallel(items: List[T], fn: Callable[[T], R], max_workers: int = _BATC
     if len(items) == 1:
         return [fn(items[0])]
     workers = min(max_workers, len(items))
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    with _PoolExecutor(max_workers=workers) as executor:
         return list(executor.map(fn, items))
 
 

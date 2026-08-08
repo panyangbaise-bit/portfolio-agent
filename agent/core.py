@@ -1,10 +1,15 @@
 """Agent core orchestrator — ties together session, graph, and tools."""
 
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Dict, Iterator, Optional
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+
+try:
+    from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
+except ImportError:  # pragma: no cover
+    from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
 from agent.graph import agent_graph
 from agent.session import AgentSessionManager
@@ -38,7 +43,7 @@ def _invoke_agent(session: AgentSessionManager, state: dict) -> dict:
     should eventually unblock the hung HTTP read.
     """
     timeout = float(config.AGENT_RUN_TIMEOUT)
-    executor = ThreadPoolExecutor(max_workers=1)
+    executor = _PoolExecutor(max_workers=1)
     try:
         future = executor.submit(agent_graph.invoke, state)
         try:

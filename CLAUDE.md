@@ -141,7 +141,7 @@ Jobs are **not** required to emit clickable recommendations every run. Prompt as
 
 ### Tool-call timeout and loop guard
 
-`agent/tool_guards.py` replaces LangGraph `ToolNode`: every tool invoke runs under `TOOL_CALL_TIMEOUT` (default 120s) via `ThreadPoolExecutor`; timeouts return `{"error":"timeout",...}` as the tool result. Identical `(tool name, params)` fingerprints are counted across prior AI tool_calls and the current batch; on the Nth request (`TOOL_IDENTICAL_CALL_LIMIT`, default 3) that call is not executed, `tool_loop_halted` is set, and the graph ends after a short closing AIMessage (no further LLM tool rounds).
+`agent/tool_guards.py` replaces LangGraph `ToolNode`: every tool invoke runs under `TOOL_CALL_TIMEOUT` (default 120s) via LangSmith `ContextThreadPoolExecutor` (stdlib `ThreadPoolExecutor` drops contextvars and orphans tool runs as top-level LangSmith traces); timeouts return `{"error":"timeout",...}` as the tool result. Batch helpers in `agent/tools.py` and `_invoke_agent` use the same pool. Identical `(tool name, params)` fingerprints are counted across prior AI tool_calls and the current batch; on the Nth request (`TOOL_IDENTICAL_CALL_LIMIT`, default 3) that call is not executed, `tool_loop_halted` is set, and the graph ends after a short closing AIMessage (no further LLM tool rounds).
 
 `AGENT_MAX_ROUNDS` (default 12) caps tool-enabled LLM rounds per LangGraph invoke (~2× a typical 6-step job). If the last tool-enabled round still requested tools, one final no-tools synthesis is allowed so results are not dropped.
 
