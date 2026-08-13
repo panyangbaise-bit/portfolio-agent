@@ -67,12 +67,21 @@ def _serialize_tool_result(result: Any) -> str:
 
 
 def invoke_tool_with_timeout(tool: Any, args: dict, timeout: float) -> Any:
-    """Run ``tool.invoke(args)`` with a wall-clock timeout (abandon on hang)."""
-    result, timed_out = run_with_timeout_or_flag(tool.invoke, timeout, args)
+    """Run ``tool.invoke(args)`` with a wall-clock timeout (abandon on hang).
+
+    Provider exceptions (e.g. East Money RemoteDisconnected) become an error
+    payload so one flaky HTTP call cannot fail the whole LangGraph job.
+    """
+    result, timed_out, error = run_with_timeout_or_flag(tool.invoke, timeout, args)
     if timed_out:
         return {
             "error": "timeout",
             "message": f"Tool timed out after {timeout:.0f}s",
+        }
+    if error is not None:
+        return {
+            "error": type(error).__name__,
+            "message": str(error) or type(error).__name__,
         }
     return result
 

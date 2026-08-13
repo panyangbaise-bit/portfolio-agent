@@ -43,16 +43,20 @@ def run_with_timeout_or_flag(
     *args: Any,
     **kwargs: Any,
 ):
-    """Like ``run_with_timeout`` but returns ``(value, timed_out)``.
+    """Like ``run_with_timeout`` but returns ``(value, timed_out, error)``.
 
-    Exceptions from ``fn`` propagate (only wall-clock timeout sets the flag).
+    Wall-clock timeout → ``(None, True, None)``.
+    ``fn`` exception → ``(None, False, exc)`` so callers can degrade
+    without crashing the LangGraph tools node.
     """
     pool = _PoolExecutor(max_workers=1)
     try:
         future = pool.submit(fn, *args, **kwargs)
         try:
-            return future.result(timeout=timeout), False
+            return future.result(timeout=timeout), False, None
         except FuturesTimeout:
-            return None, True
+            return None, True, None
+        except Exception as exc:
+            return None, False, exc
     finally:
         pool.shutdown(wait=False)

@@ -29,7 +29,11 @@ _spot_fetched_at: float = 0.0
 
 
 def _get_a_share_spot_df() -> pd.DataFrame:
-    """Thread-safe TTL cache for East Money A-share spot table."""
+    """Thread-safe TTL cache for East Money A-share spot table.
+
+    A failed refresh reuses the last successful board (stale) so a transient
+    RemoteDisconnected from ``stock_zh_a_spot_em`` does not crash the job.
+    """
     global _spot_df, _spot_fetched_at
     now = time.monotonic()
     cached = _spot_df
@@ -39,7 +43,12 @@ def _get_a_share_spot_df() -> pd.DataFrame:
         now = time.monotonic()
         if _spot_df is not None and (now - _spot_fetched_at) < _SPOT_TTL_SECONDS:
             return _spot_df
-        df = ak.stock_zh_a_spot_em()
+        try:
+            df = ak.stock_zh_a_spot_em()
+        except Exception:
+            if _spot_df is not None:
+                return _spot_df
+            raise
         _spot_df = df
         _spot_fetched_at = time.monotonic()
         return df
@@ -58,14 +67,35 @@ class CNMarketAdapter(MarketAdapter):
     def get_price(self, ticker: str) -> dict:
         # For fund-like codes (starting with 0), try fund API directly
         if self._is_fund(ticker) and ticker[0] == "0":
-            return self._get_fund_price(ticker)
+            return self._safe_price(ticker, self._get_fund_price)
         # For stock-like codes, try stock API first
         try:
             return self._get_stock_price(ticker)
         except ValueError:
             if self._is_fund(ticker):
-                return self._get_fund_price(ticker)
-            raise
+                return self._safe_price(ticker, self._get_fund_price)
+            return {
+                "ticker": ticker,
+                "error": "not_found",
+                "message": f"Ticker {ticker} not found in stock list",
+            }
+        except Exception as exc:
+            return {
+                "ticker": ticker,
+                "error": type(exc).__name__,
+                "message": str(exc) or type(exc).__name__,
+            }
+
+    @staticmethod
+    def _safe_price(ticker: str, fn) -> dict:
+        try:
+            return fn(ticker)
+        except Exception as exc:
+            return {
+                "ticker": ticker,
+                "error": type(exc).__name__,
+                "message": str(exc) or type(exc).__name__,
+            }
 
     def _get_stock_price(self, ticker: str) -> dict:
         df = _get_a_share_spot_df()
@@ -121,14 +151,17 @@ class CNMarketAdapter(MarketAdapter):
         }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
-        if self._is_fund(ticker) and ticker[0] == "0":
-            return self._get_fund_kline(ticker, period)
         try:
-            return self._get_stock_kline(ticker, period)
-        except (ValueError, KeyError):
-            if self._is_fund(ticker):
+            if self._is_fund(ticker) and ticker[0] == "0":
                 return self._get_fund_kline(ticker, period)
-            raise
+            try:
+                return self._get_stock_kline(ticker, period)
+            except (ValueError, KeyError):
+                if self._is_fund(ticker):
+                    return self._get_fund_kline(ticker, period)
+                return []
+        except Exception:
+            return []
 
     def _get_stock_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
         mapping = {"1mo": "monthly", "3mo": "quarterly", "6mo": "halfyear", "1y": "yearly", "5y": "yearly"}
@@ -188,11 +221,18 @@ class CNMarketAdapter(MarketAdapter):
         fetched in parallel under short per-call + wall-clock budgets; any miss
         degrades to empty fields + notes instead of blocking the agent.
         """
+        try:
+            return self._get_fund_info_inner(ticker, top_constituents)
+        except Exception as exc:
+            from adapters.safe import error_payload
+            return error_payload(exc, ticker=ticker)
+
+    def _get_fund_info_inner(self, ticker: str, top_constituents: int) -> dict:
         code = (ticker or "").strip()
         if not code:
             return {"ticker": ticker, "error": "empty ticker"}
 
-        overview, ov_timeout = run_with_timeout_or_flag(
+        overview, ov_timeout, ov_error = run_with_timeout_or_flag(
             self._fetch_fund_overview, _FUND_OVERVIEW_TIMEOUT, code,
         )
         if ov_timeout:
@@ -200,6 +240,12 @@ class CNMarketAdapter(MarketAdapter):
                 "ticker": code,
                 "error": "timeout",
                 "message": f"fund overview timed out after {_FUND_OVERVIEW_TIMEOUT:.0f}s",
+            }
+        if ov_error is not None:
+            return {
+                "ticker": code,
+                "error": type(ov_error).__name__,
+                "message": str(ov_error) or type(ov_error).__name__,
             }
         if not overview or (overview.get("error") and not overview.get("name")):
             return overview or {"ticker": code, "error": "fund overview not found"}
@@ -572,70 +618,88 @@ class HKMarketAdapter(MarketAdapter):
 
     def get_price(self, ticker: str) -> dict:
         import yfinance as yf
-        symbol = self._to_yf_ticker(ticker)
-        stock = yf.Ticker(symbol)
-        fast = stock.fast_info
-        price = fast.get("lastPrice")
-        if price is None:
-            # Avoid the slow metadata endpoint unless the fast quote is empty.
-            info = stock.info
-            price = info.get("currentPrice")
-        if price is None:
-            raise ValueError(f"No price data for {symbol}")
-        return {
-            "ticker": ticker.upper().replace(".HK", ""),
-            "price": float(price),
-            "currency": "HKD",
-            "change_pct": None,
-            "volume": None,
-            "timestamp": datetime.now().isoformat(),
-        }
+        from adapters.safe import error_payload
+        try:
+            symbol = self._to_yf_ticker(ticker)
+            stock = yf.Ticker(symbol)
+            fast = stock.fast_info
+            price = fast.get("lastPrice")
+            if price is None:
+                # Avoid the slow metadata endpoint unless the fast quote is empty.
+                info = stock.info
+                price = info.get("currentPrice")
+            if price is None:
+                return error_payload(
+                    ValueError(f"No price data for {symbol}"),
+                    ticker=ticker.upper().replace(".HK", ""),
+                )
+            return {
+                "ticker": ticker.upper().replace(".HK", ""),
+                "price": float(price),
+                "currency": "HKD",
+                "change_pct": None,
+                "volume": None,
+                "timestamp": datetime.now().isoformat(),
+            }
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker.upper().replace(".HK", ""))
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
         import yfinance as yf
-        symbol = self._to_yf_ticker(ticker)
-        stock = yf.Ticker(symbol)
-        df = stock.history(period=period)
-        if df.empty:
+        try:
+            symbol = self._to_yf_ticker(ticker)
+            stock = yf.Ticker(symbol)
+            df = stock.history(period=period)
+            if df.empty:
+                return []
+            return [
+                {
+                    "date": idx.strftime("%Y-%m-%d"),
+                    "open": round(row["Open"], 2),
+                    "high": round(row["High"], 2),
+                    "low": round(row["Low"], 2),
+                    "close": round(row["Close"], 2),
+                    "volume": int(row["Volume"]),
+                }
+                for idx, row in df.iterrows()
+            ]
+        except Exception:
             return []
-        return [
-            {
-                "date": idx.strftime("%Y-%m-%d"),
-                "open": round(row["Open"], 2),
-                "high": round(row["High"], 2),
-                "low": round(row["Low"], 2),
-                "close": round(row["Close"], 2),
-                "volume": int(row["Volume"]),
-            }
-            for idx, row in df.iterrows()
-        ]
 
     def get_financials(self, ticker: str) -> dict:
         import yfinance as yf
-        symbol = self._to_yf_ticker(ticker)
-        stock = yf.Ticker(symbol)
-        info = stock.info
-        return {
-            "ticker": ticker.upper().replace(".HK", ""),
-            "name": info.get("longName") or info.get("shortName"),
-            "report_date": str(info.get("lastFiscalYearEnd", ""))[:10] if info.get("lastFiscalYearEnd") else None,
-            "revenue": info.get("totalRevenue"),
-            "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
-            "eps": info.get("trailingEps"),
-            "pe_ratio": info.get("trailingPE"),
-            "pb_ratio": info.get("priceToBook"),
-            "roe": self._safe_pct(info.get("returnOnEquity")),
-            "market_cap": info.get("marketCap"),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
-        }
+        from adapters.safe import error_payload
+        try:
+            symbol = self._to_yf_ticker(ticker)
+            stock = yf.Ticker(symbol)
+            info = stock.info
+            return {
+                "ticker": ticker.upper().replace(".HK", ""),
+                "name": info.get("longName") or info.get("shortName"),
+                "report_date": str(info.get("lastFiscalYearEnd", ""))[:10] if info.get("lastFiscalYearEnd") else None,
+                "revenue": info.get("totalRevenue"),
+                "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
+                "eps": info.get("trailingEps"),
+                "pe_ratio": info.get("trailingPE"),
+                "pb_ratio": info.get("priceToBook"),
+                "roe": self._safe_pct(info.get("returnOnEquity")),
+                "market_cap": info.get("marketCap"),
+                "sector": info.get("sector"),
+                "industry": info.get("industry"),
+            }
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker.upper().replace(".HK", ""))
 
     def get_market_snapshot(self) -> dict:
         import yfinance as yf
-        hsi = yf.Ticker("^HSI")
-        info = hsi.fast_info
-        return {
-            "index_name": "恒生指数",
-            "current": info.get("lastPrice"),
-            "change_pct": self._safe_pct(getattr(info, "regularMarketChangePercent", None)),
-        }
+        from adapters.safe import error_payload
+        try:
+            hsi = yf.Ticker("^HSI")
+            info = hsi.fast_info
+            return {
+                "index_name": "恒生指数",
+                "current": info.get("lastPrice"),
+                "change_pct": self._safe_pct(getattr(info, "regularMarketChangePercent", None)),
+            }
+        except Exception as exc:
+            return error_payload(exc, index_name="恒生指数")

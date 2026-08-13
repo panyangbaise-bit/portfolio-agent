@@ -3,6 +3,7 @@ from typing import Optional
 import yfinance as yf
 
 from adapters.base import MarketAdapter
+from adapters.safe import error_payload
 
 
 class USMarketAdapter(MarketAdapter):
@@ -11,72 +12,84 @@ class USMarketAdapter(MarketAdapter):
     MARKET = "US"
 
     def get_price(self, ticker: str) -> dict:
-        stock = yf.Ticker(ticker)
-        fast = stock.fast_info
-        price = fast.get("lastPrice")
-        if price is None:
-            # Only request the heavier quote endpoint when the fast quote
-            # cannot provide a value.
-            info = stock.info
-            price = info.get("currentPrice")
-        return {
-            "ticker": ticker.upper(),
-            "price": price,
-            "currency": "USD",
-            "change_pct": None,
-            "volume": None,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        try:
+            stock = yf.Ticker(ticker)
+            fast = stock.fast_info
+            price = fast.get("lastPrice")
+            if price is None:
+                # Only request the heavier quote endpoint when the fast quote
+                # cannot provide a value.
+                info = stock.info
+                price = info.get("currentPrice")
+            return {
+                "ticker": ticker.upper(),
+                "price": price,
+                "currency": "USD",
+                "change_pct": None,
+                "volume": None,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker.upper())
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period)
-        if df.empty:
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period)
+            if df.empty:
+                return []
+            return [
+                {
+                    "date": idx.strftime("%Y-%m-%d"),
+                    "open": round(row["Open"], 2),
+                    "high": round(row["High"], 2),
+                    "low": round(row["Low"], 2),
+                    "close": round(row["Close"], 2),
+                    "volume": int(row["Volume"]),
+                }
+                for idx, row in df.iterrows()
+            ]
+        except Exception:
             return []
-        return [
-            {
-                "date": idx.strftime("%Y-%m-%d"),
-                "open": round(row["Open"], 2),
-                "high": round(row["High"], 2),
-                "low": round(row["Low"], 2),
-                "close": round(row["Close"], 2),
-                "volume": int(row["Volume"]),
-            }
-            for idx, row in df.iterrows()
-        ]
 
     def get_financials(self, ticker: str) -> dict:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return {
-            "ticker": ticker.upper(),
-            "report_date": self._safe_date(info.get("lastFiscalYearEnd")),
-            "revenue": info.get("totalRevenue"),
-            "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
-            "eps": info.get("trailingEps"),
-            "forward_eps": info.get("forwardEps"),
-            "pe_ratio": info.get("trailingPE"),
-            "forward_pe": info.get("forwardPE"),
-            "pb_ratio": info.get("priceToBook"),
-            "debt_to_equity": info.get("debtToEquity"),
-            "roe": self._safe_pct(info.get("returnOnEquity")),
-            "profit_margins": self._safe_pct(info.get("profitMargins")),
-            "earnings_date_next": self._safe_date(info.get("earningsDate")),
-            "dividend_yield": self._safe_pct(info.get("dividendYield")),
-            "market_cap": info.get("marketCap"),
-            "sector": info.get("sector"),
-            "industry": info.get("industry"),
-        }
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            return {
+                "ticker": ticker.upper(),
+                "report_date": self._safe_date(info.get("lastFiscalYearEnd")),
+                "revenue": info.get("totalRevenue"),
+                "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
+                "eps": info.get("trailingEps"),
+                "forward_eps": info.get("forwardEps"),
+                "pe_ratio": info.get("trailingPE"),
+                "forward_pe": info.get("forwardPE"),
+                "pb_ratio": info.get("priceToBook"),
+                "debt_to_equity": info.get("debtToEquity"),
+                "roe": self._safe_pct(info.get("returnOnEquity")),
+                "profit_margins": self._safe_pct(info.get("profitMargins")),
+                "earnings_date_next": self._safe_date(info.get("earningsDate")),
+                "dividend_yield": self._safe_pct(info.get("dividendYield")),
+                "market_cap": info.get("marketCap"),
+                "sector": info.get("sector"),
+                "industry": info.get("industry"),
+            }
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker.upper())
 
     def get_market_snapshot(self) -> dict:
-        spx = yf.Ticker("^GSPC")
-        info = spx.fast_info
-        return {
-            "index_name": "S&P 500",
-            "current": info.get("lastPrice"),
-            "change_pct": self._safe_pct(info.get("regularMarketChangePercent")),
-            "ytd_change": self._safe_pct(self._calc_ytd(spx)),
-        }
+        try:
+            spx = yf.Ticker("^GSPC")
+            info = spx.fast_info
+            return {
+                "index_name": "S&P 500",
+                "current": info.get("lastPrice"),
+                "change_pct": self._safe_pct(info.get("regularMarketChangePercent")),
+                "ytd_change": self._safe_pct(self._calc_ytd(spx)),
+            }
+        except Exception as exc:
+            return error_payload(exc, index_name="S&P 500")
 
     @staticmethod
     def _safe_pct(value) -> Optional[float]:

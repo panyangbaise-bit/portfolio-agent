@@ -109,7 +109,7 @@ Agent tool `get_fund_info` (CN only): required overview via East Money `fund_ove
 
 ### Agent batch market tools are parallel
 
-Comma-separated batch calls in `agent/tools.py` (`get_price`, `get_kline`, `get_financials`, `get_market_snapshot`, `search_ticker_news`) and `get_portfolio` price enrichment use `ThreadPoolExecutor` (`_map_parallel`, max 12 workers). Without this, a 6-ticker `get_price` or multi-holding `get_portfolio` runs ~N× slowest provider latency (~60s in LangSmith). Dashboard batch fetch stays separate (`fetch_prices_batch` + 2s deadline). CN A-share spot (`stock_zh_a_spot_em`) is process-cached 60s in `adapters/cn_market.py` so parallel CN stock lookups do not re-download the full board each time.
+Comma-separated batch calls in `agent/tools.py` (`get_price`, `get_kline`, `get_financials`, `get_market_snapshot`, `search_ticker_news`) and `get_portfolio` price enrichment use `ThreadPoolExecutor` (`_map_parallel`, max 12 workers). Without this, a 6-ticker `get_price` or multi-holding `get_portfolio` runs ~N× slowest provider latency (~60s in LangSmith). Dashboard batch fetch stays separate (`fetch_prices_batch` + 2s deadline). CN A-share spot (`stock_zh_a_spot_em`) is process-cached 60s in `adapters/cn_market.py` so parallel CN stock lookups do not re-download the full board each time. A failed refresh reuses the last successful board; with no cache, `get_price` returns `{"error":...}` instead of raising. All market adapters (US/CN/HK/Crypto) and news calls degrade to an error dict or empty list on provider failure. Tools wrap every single-path call with `_safe_invoke`; `invoke_tool_with_timeout` is the last line of defense so East Money `RemoteDisconnected` cannot fail the LangGraph job.
 
 ### Currency conversion
 

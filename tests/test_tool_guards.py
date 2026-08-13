@@ -76,6 +76,39 @@ def test_invoke_tool_with_timeout_does_not_block_on_shutdown():
     assert elapsed < 1.0
 
 
+@tool
+def boom_tool(text: str = "") -> dict:
+    """Raise so the tools node must degrade instead of crashing the job."""
+    raise ConnectionError("Remote end closed connection without response")
+
+
+def test_invoke_tool_with_timeout_returns_provider_error_payload():
+    result = invoke_tool_with_timeout(boom_tool, {"text": "x"}, timeout=5)
+    assert result["error"] == "ConnectionError"
+    assert "closed connection" in result["message"]
+
+
+def test_execute_tool_calls_survives_provider_exception():
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[{
+                    "name": "boom_tool",
+                    "args": {"text": "x"},
+                    "id": "c1",
+                    "type": "tool_call",
+                }],
+            ),
+        ],
+        "session_id": 1,
+    }
+    out = execute_tool_calls(state, [boom_tool], timeout=5, max_identical=3)
+    assert out["tool_loop_halted"] is False
+    payload = json.loads(out["messages"][0].content)
+    assert payload["error"] == "ConnectionError"
+
+
 def test_execute_tool_calls_runs_tool():
     state = {
         "messages": [

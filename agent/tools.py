@@ -5,7 +5,7 @@ interface to the LLM. The agent does not know about adapters, markets,
 or databases — it just calls these functions.
 """
 
-from typing import Annotated, Callable, List, Optional, TypeVar
+from typing import Annotated, Any, Callable, List, Optional, TypeVar
 
 from langchain.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -22,6 +22,7 @@ from db.repository import (
 )
 from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
+from adapters.safe import error_payload
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -39,6 +40,16 @@ def _map_parallel(items: List[T], fn: Callable[[T], R], max_workers: int = _BATC
     workers = min(max_workers, len(items))
     with _PoolExecutor(max_workers=workers) as executor:
         return list(executor.map(fn, items))
+
+
+def _safe_invoke(fn: Callable[[], R], empty: Optional[R] = None, **extra) -> Any:
+    """Never let a provider/DB exception escape a LangChain tool."""
+    try:
+        return fn()
+    except Exception as exc:
+        if empty is not None:
+            return empty
+        return error_payload(exc, **extra)
 
 
 def _notify_recommendation(recommendation) -> None:
@@ -62,6 +73,10 @@ def get_portfolio() -> list[dict]:
         list[dict]: 持仓列表，每项含 ticker, market, shares, cost_basis, currency,
         current_price, market_value（原币）, market_value_cny, pnl_pct, weight_pct（按 CNY）
     """
+    return _safe_invoke(_get_portfolio_inner)
+
+
+def _get_portfolio_inner() -> list:
     from app.fx import currency_for_market, get_cny_rates
 
     session = get_session()
@@ -85,6 +100,8 @@ def get_portfolio() -> list[dict]:
             try:
                 adapter = adapter_registry.get(h.market)
                 price_data = adapter.get_price(h.ticker)
+                if not isinstance(price_data, dict) or price_data.get("error"):
+                    return h.cost_basis
                 return price_data.get("price", 0) or 0
             except Exception:
                 return h.cost_basis
@@ -144,30 +161,39 @@ def get_holding(ticker: str) -> dict:
     Returns:
         dict: 持仓详情，含 ticker, market, shares, cost_basis, position_type, current_price, pnl_pct
     """
-    session = get_session()
-    try:
-        h = get_holding_by_ticker(session, ticker.upper())
-        if not h:
-            return {"error": f"未找到标的: {ticker}"}
+    def _run():
+        session = get_session()
         try:
-            adapter = adapter_registry.get(h.market)
-            price_data = adapter.get_price(h.ticker)
-            current_price = price_data.get("price", 0) or 0
-        except Exception:
+            return _get_holding_inner(session, ticker)
+        finally:
+            session.close()
+
+    return _safe_invoke(_run, ticker=ticker)
+
+def _get_holding_inner(session, ticker: str) -> dict:
+    h = get_holding_by_ticker(session, ticker.upper())
+    if not h:
+        return {"error": f"未找到标的: {ticker}"}
+    try:
+        adapter = adapter_registry.get(h.market)
+        price_data = adapter.get_price(h.ticker)
+        if not isinstance(price_data, dict) or price_data.get("error"):
             current_price = h.cost_basis
-        pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
-        return {
-            "ticker": h.ticker,
-            "market": h.market,
-            "shares": h.shares,
-            "cost_basis": h.cost_basis,
-            "current_price": round(current_price, 2),
-            "position_type": h.position_type,
-            "pnl_pct": round(pnl_pct, 2),
-            "holding_id": h.id,
-        }
-    finally:
-        session.close()
+        else:
+            current_price = price_data.get("price", 0) or 0
+    except Exception:
+        current_price = h.cost_basis
+    pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
+    return {
+        "ticker": h.ticker,
+        "market": h.market,
+        "shares": h.shares,
+        "cost_basis": h.cost_basis,
+        "current_price": round(current_price, 2),
+        "position_type": h.position_type,
+        "pnl_pct": round(pnl_pct, 2),
+        "holding_id": h.id,
+    }
 
 
 # ── Market Data Tools ─────────────────────────────────────
@@ -221,7 +247,7 @@ def get_price(ticker: str, market: str) -> dict:
         ad = adapters.get(tickers[0])
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
-        return ad.get_price(tickers[0])
+        return _safe_invoke(lambda: ad.get_price(tickers[0]), ticker=tickers[0])
 
     def _one(t: str):
         ad = adapters.get(t)
@@ -251,7 +277,7 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
         ad = adapters.get(tickers[0])
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
-        return ad.get_kline(tickers[0], period)
+        return _safe_invoke(lambda: ad.get_kline(tickers[0], period), empty=[])
 
     def _one(t: str):
         ad = adapters.get(t)
@@ -281,7 +307,7 @@ def get_financials(ticker: str, market: str) -> dict:
         ad = adapters.get(tickers[0])
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
-        return ad.get_financials(tickers[0])
+        return _safe_invoke(lambda: ad.get_financials(tickers[0]), ticker=tickers[0])
 
     def _one(t: str):
         ad = adapters.get(t)
@@ -308,10 +334,16 @@ def get_fund_info(ticker: str, top_constituents: int = 20) -> dict:
     Returns:
         dict: name, tracked_index, fees, asset_allocation, constituents, notes 等
     """
-    adapter = adapter_registry.get("CN")
+    try:
+        adapter = adapter_registry.get("CN")
+    except Exception as exc:
+        return error_payload(exc, ticker=ticker)
     if not hasattr(adapter, "get_fund_info"):
         return {"ticker": ticker, "error": "CN adapter does not support get_fund_info"}
-    return adapter.get_fund_info(ticker, top_constituents=top_constituents)
+    return _safe_invoke(
+        lambda: adapter.get_fund_info(ticker, top_constituents=top_constituents),
+        ticker=ticker,
+    )
 
 
 @tool
@@ -333,8 +365,10 @@ def get_market_snapshot(market: str) -> dict:
     if not markets:
         return {"error": "no valid markets"}
     if len(markets) == 1:
-        adapter = adapter_registry.get(markets[0])
-        return adapter.get_market_snapshot()
+        return _safe_invoke(
+            lambda: adapter_registry.get(markets[0]).get_market_snapshot(),
+            market=markets[0],
+        )
 
     def _one(mk: str):
         try:
@@ -364,26 +398,30 @@ def get_watchlist(status: Optional[str] = None) -> list[dict]:
                     target_price_low, target_price_high, status, priority, created_at
     """
     from db.repository import get_watchlist_items
-    session = get_session()
-    try:
-        items = get_watchlist_items(session, status=status)
-        return [
-            {
-                "id": item.id,
-                "ticker": item.ticker,
-                "name": item.name,
-                "market": item.market,
-                "watch_reason": item.watch_reason,
-                "target_price_low": item.target_price_low,
-                "target_price_high": item.target_price_high,
-                "status": item.status,
-                "priority": item.priority,
-                "created_at": item.created_at.isoformat() if item.created_at else None,
-            }
-            for item in items
-        ]
-    finally:
-        session.close()
+
+    def _run():
+        session = get_session()
+        try:
+            items = get_watchlist_items(session, status=status)
+            return [
+                {
+                    "id": item.id,
+                    "ticker": item.ticker,
+                    "name": item.name,
+                    "market": item.market,
+                    "watch_reason": item.watch_reason,
+                    "target_price_low": item.target_price_low,
+                    "target_price_high": item.target_price_high,
+                    "status": item.status,
+                    "priority": item.priority,
+                    "created_at": item.created_at.isoformat() if item.created_at else None,
+                }
+                for item in items
+            ]
+        finally:
+            session.close()
+
+    return _safe_invoke(_run, empty=[])
 
 
 @tool
@@ -410,6 +448,20 @@ def add_to_watchlist(
     Returns:
         dict: status=added, ticker, id
     """
+    from db.repository import create_watchlist_item, get_watchlist_by_ticker
+
+    def _run():
+        return _add_to_watchlist_inner(
+            ticker, market, name, watch_reason,
+            target_price_low, target_price_high, priority,
+        )
+
+    return _safe_invoke(_run, ticker=ticker)
+
+
+def _add_to_watchlist_inner(
+    ticker, market, name, watch_reason, target_price_low, target_price_high, priority,
+):
     from db.repository import create_watchlist_item, get_watchlist_by_ticker
     session = get_session()
     try:
@@ -447,15 +499,19 @@ def remove_from_watchlist(ticker: str) -> dict:
         dict: status=removed | not_found
     """
     from db.repository import get_watchlist_by_ticker, delete_watchlist_item
-    session = get_session()
-    try:
-        item = get_watchlist_by_ticker(session, ticker)
-        if not item:
-            return {"status": "not_found", "ticker": ticker, "message": "该标的不在监察表中"}
-        delete_watchlist_item(session, item.id)
-        return {"status": "removed", "ticker": item.ticker}
-    finally:
-        session.close()
+
+    def _run():
+        session = get_session()
+        try:
+            item = get_watchlist_by_ticker(session, ticker)
+            if not item:
+                return {"status": "not_found", "ticker": ticker, "message": "该标的不在监察表中"}
+            delete_watchlist_item(session, item.id)
+            return {"status": "removed", "ticker": item.ticker}
+        finally:
+            session.close()
+
+    return _safe_invoke(_run, ticker=ticker)
 
 
 # ── News Tools (continued) ────────────────────────────────
@@ -490,7 +546,12 @@ def search_ticker_news(ticker: str, days: int = 7) -> dict:
         return {"error": "no valid tickers"}
 
     if len(tickers) == 1:
-        results = news_adapter.search_ticker_news(tickers[0], days)
+        results = _safe_invoke(
+            lambda: news_adapter.search_ticker_news(tickers[0], days),
+            empty=[],
+        )
+        if isinstance(results, dict) and results.get("error"):
+            return {"ticker": tickers[0], "results": [], **results}
         return {"ticker": tickers[0], "results": results}
 
     def _one(t: str):
@@ -509,8 +570,12 @@ def get_market_headlines() -> list[dict]:
     Returns:
         list[dict]: 新闻列表，每项含 title, url, summary, published_at, author
     """
-    headlines = news_adapter.get_headlines(10)
-    latest = news_adapter.get_latest_news(10)
+    headlines = _safe_invoke(lambda: news_adapter.get_headlines(10), empty=[])
+    latest = _safe_invoke(lambda: news_adapter.get_latest_news(10), empty=[])
+    if not isinstance(headlines, list):
+        headlines = []
+    if not isinstance(latest, list):
+        latest = []
     seen = set()
     merged = []
     for item in headlines + latest:
@@ -537,6 +602,13 @@ def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) ->
     Returns:
         list[dict]: 历史建议列表
     """
+    def _run():
+        return _get_recommendation_history_inner(ticker, limit)
+
+    return _safe_invoke(_run, empty=[])
+
+
+def _get_recommendation_history_inner(ticker, limit):
     session = get_session()
     try:
         recs = db_get_rec_history(session, ticker=ticker, limit=limit)
@@ -567,6 +639,13 @@ def get_trade_history(days: int = 30) -> list[dict]:
     Returns:
         list[dict]: 交易列表，含 ticker, action, shares, price, date, notes
     """
+    def _run():
+        return _get_trade_history_inner(days)
+
+    return _safe_invoke(_run, empty=[])
+
+
+def _get_trade_history_inner(days):
     session = get_session()
     try:
         txns = get_recent_transactions(session, days=days)

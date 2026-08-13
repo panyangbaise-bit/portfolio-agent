@@ -55,7 +55,11 @@ class CryptoAdapter(MarketAdapter):
                 "timestamp": datetime.utcnow().isoformat(),
             }
         except Exception as e:
-            raise RuntimeError(f"CoinGecko price failed for {ticker}: {e}")
+            return {
+                "ticker": ticker.upper(),
+                "error": type(e).__name__,
+                "message": f"CoinGecko price failed for {ticker}: {e}",
+            }
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
         coin_id = self._get_id(ticker)
@@ -74,8 +78,8 @@ class CryptoAdapter(MarketAdapter):
                 for i, p in enumerate(prices)
                 if i % max(1, len(prices) // 100) == 0
             ]
-        except Exception as e:
-            raise RuntimeError(f"CoinGecko kline failed for {ticker}: {e}")
+        except Exception:
+            return []
 
     def get_financials(self, ticker: str) -> dict:
         coin_id = self._get_id(ticker)
@@ -97,7 +101,11 @@ class CryptoAdapter(MarketAdapter):
                 "categories": data.get("categories", [])[:5],
             }
         except Exception as e:
-            return {"ticker": ticker.upper(), "error": str(e)}
+            return {
+                "ticker": ticker.upper(),
+                "error": type(e).__name__,
+                "message": str(e) or type(e).__name__,
+            }
 
     def get_market_snapshot(self) -> dict:
         try:
@@ -111,4 +119,8 @@ class CryptoAdapter(MarketAdapter):
                 "active_cryptocurrencies": mkt.get("active_cryptocurrencies"),
             }
         except Exception as e:
-            return {"index_name": "Crypto Market", "error": str(e)}
+            return {
+                "index_name": "Crypto Market",
+                "error": type(e).__name__,
+                "message": str(e) or type(e).__name__,
+            }
