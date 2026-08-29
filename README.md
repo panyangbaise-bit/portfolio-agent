@@ -2,43 +2,85 @@
 
 [中文文档](README_CN.md)
 
-AI-powered personal portfolio management for US, China A-share, Hong Kong, and crypto holdings. It combines a Streamlit dashboard, a LangGraph tool-calling agent (DeepSeek thinking mode), live market adapters, scheduled analysis, and Telegram notifications.
+An AI portfolio OS for **US / China A-share / Hong Kong / crypto** holdings. A cyberpunk Streamlit dashboard, a DeepSeek thinking-mode agent (LangGraph + tools), live market adapters, scheduled analysis, and optional Telegram alerts.
+
+Open locally at [http://localhost:8501](http://localhost:8501) after `./run.sh`.
 
 ## Screenshots
 
+Captured from the running app (`http://127.0.0.1:8501`, English UI).
+
 ### Dashboard
 
-Portfolio KPIs, core/satellite holdings, live P&L, and Ask Agent.
+CNY-normalized total value and P&L, pending recommendations, risk level, then **core** vs **satellite** holdings with live prices. The red star in the corner is **Ask Agent**.
 
 ![Portfolio Dashboard](docs/screenshots/dashboard.png)
 
+### Ask Agent
+
+Global floating chat on every page. Ask about allocation, risk, or what to adjust. Multi-turn follow-ups share one session until **New chat**. Drag the **top-left** handle to resize; the composer grows with the panel.
+
+![Ask Agent](docs/screenshots/ask-agent.png)
+
+### Holdings
+
+Add positions by ticker and market, then **Edit / Delete**, **Buy / Sell** (weighted-average buys, broker-style residual cost on sells), and a full transaction ledger. Closed positions stay in history.
+
+![Holdings](docs/screenshots/holdings.png)
+
+### Watchlist
+
+Track names before you enter. Cards keep a reason and optional target range; edit the reason or delete when you are done.
+
+![Watchlist](docs/screenshots/watchlist.png)
+
 ### Recommendations
 
-Agent suggestions with confidence, urgency, full reasoning, Accept / Dismiss.
+Pending agent suggestions with confidence, urgency, and reasoning. **Accept** or **Dismiss** here (not in Telegram). Empty state means the agent is monitoring and not spamming routine holds.
 
-![Agent Recommendations](docs/screenshots/recommendations.png)
+![Recommendations](docs/screenshots/recommendations.png)
 
 ### Jobs
 
-Scheduled after-market / news jobs, Run Now triggers, and runtime logs (Beijing time by default).
+Six scheduled jobs (news poll, crypto daily, US/CN/HK after-market, monthly trade review). **Run Now** on any row, edit the news crontab, then inspect **Job Runtime Log** and agent session detail (summary, tool calls, saved recs). Times use `APP_TIMEZONE` (default Beijing).
 
 ![Jobs](docs/screenshots/jobs.png)
 
+### History
+
+Audit trail of recommendations and your actions — ticker, action, confidence, urgency, status, timestamp, and the saved rationale.
+
+![Decision History](docs/screenshots/history.png)
+
 ### Telegram
 
-High-priority analysis pushed to your chat when jobs finish.
+Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss stay on the dashboard so this process never fights another bot for `getUpdates`).
 
 ![Telegram notification](docs/screenshots/telegram.png)
 
 ## Features
 
-- **Multi-market holdings** — US / CN / HK / crypto with core-satellite allocation
-- **DeepSeek thinking agent** — `deepseek-v4-pro` + thinking mode (`reasoning_effort=max`) via LangGraph
-- **Live-price resilience** — cached snapshots first, then background refresh
-- **Scheduled analysis** — after-market jobs + editable news crontab (default 08:00–22:00 every 2h; ticker news and headlines)
-- **Decision audit trail** — sessions, tool calls, recommendations, and user actions in SQLite
-- **Bilingual UI** — EN / CN toggle in the top banner
-- **Telegram** — optional startup and analysis notifications
+- **Multi-market book** — US, CN (stocks + OTC funds/ETFs), HK, crypto; core vs satellite
+- **CNY portfolio totals** — FX-normalized market value and weights (native $ / HK$ / ¥ kept on cost and last price)
+- **DeepSeek thinking agent** — `deepseek-v4-pro`, thinking mode, `reasoning_effort=max`, LangGraph tool loop
+- **Ask Agent** — floating multi-turn chat, streaming replies, Jobs history row per thread
+- **Live prices with fallbacks** — cache first, background refresh; adapters degrade instead of taking the job down
+- **Scheduled analysis** — after-market by venue, news poll (holdings + headlines), monthly trade review
+- **Decision log** — sessions, tool calls, recommendations, and user actions in SQLite
+- **Bilingual UI** — **EN / CN** toggle in the top-right banner
+- **Optional Telegram** — startup welcome + analysis summaries
+- **Public gate** — `AUTH_ENABLED` + password; IPs blacklist after repeated failures
+
+## Pages
+
+| Nav | What you do |
+|---|---|
+| **Dashboard** | Snapshot KPIs and holdings tables; open Ask Agent |
+| **Holdings** | Add / edit / trade / transaction history |
+| **Watchlist** | Pre-entry tickers, reason, target range |
+| **Recommendations** | Accept or dismiss pending suggestions |
+| **Jobs** | Schedule, Run Now, crontab, runtime log, session detail |
+| **History** | Past recommendations and outcomes |
 
 ## Deploy on Ubuntu
 
@@ -65,50 +107,54 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
    # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, APP_TIMEZONE=Asia/Shanghai
    ```
 
-2. **Start the app (local)**
+2. **Start**
    ```bash
    ./run.sh
    ```
    Open http://localhost:8501.
 
-3. **Add holdings** — go to **Holdings**, add positions (core or satellite) for US / CN / HK / Crypto.
+3. **Add holdings** — **Holdings → Add Position** (US / CN / HK / Crypto, core or satellite). Use **Buy / Sell** for later fills so the ledger stays consistent.
 
-4. **Monitor the portfolio** — **Dashboard** shows total value, P&L, risk, and holdings tables. Use **Ask Agent** for ad-hoc questions.
+4. **Watch before entry** — **Watchlist** for names you care about but do not hold yet.
 
-5. **Review suggestions** — **Recommendations** lists pending actions; Accept or Dismiss each one. Full history is under **History**.
+5. **Monitor** — **Dashboard** for CNY totals, P&L, and risk. **Ask Agent** (star button) for ad-hoc questions.
 
-6. **Run or schedule analysis** — **Jobs** shows next run times. Click **Run Now** to trigger immediately, or wait for cron (US/CN/HK after-market, crypto daily, news poll). Edit the news crontab on the Jobs page. Results appear in the runtime log and Agent Session Detail; Telegram notifies when configured.
+6. **Review suggestions** — **Recommendations** to Accept / Dismiss. Full trail under **History**.
+
+7. **Run analysis** — **Jobs** shows next run times. **Run Now** or wait for cron. Results land in the runtime log, session detail, and Telegram when configured.
 
 ## Configuration
 
 | Variable | Required | Default |
-|---|---:|---|
-| `DEEPSEEK_API_KEY` | Yes | — |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | **Yes** | — |
 | `DEEPSEEK_BASE_URL` | No | `https://api.deepseek.com/v1` |
 | `DEEPSEEK_MODEL` | No | `deepseek-v4-pro` |
 | `DEEPSEEK_MAX_TOKENS` | No | `65536` |
 | `DEEPSEEK_REASONING_EFFORT` | No | `max` |
 | `DEEPSEEK_THINKING` | No | `true` |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` |
+| `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable on Jobs) |
 | `AUTH_ENABLED` | No | `false` |
 | `AUTH_PASSWORD` | If auth on | — |
 | `AUTH_MAX_FAILURES` | No | `3` |
-| `TELEGRAM_BOT_TOKEN` | No | notifications disabled |
-| `TELEGRAM_CHAT_ID` | No | notifications disabled |
+| `TELEGRAM_BOT_TOKEN` | No | notifications off |
+| `TELEGRAM_CHAT_ID` | No | notifications off |
+| `LANGSMITH_API_KEY` | No | tracing off |
 
-Before public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. After 3 failed attempts the client IP is blacklisted in `data/ip_blacklist.json`.
+Before a public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. After `AUTH_MAX_FAILURES` wrong attempts the client IP is written to `data/ip_blacklist.json`.
 
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
 |---|---|
 | UI | Streamlit 1.33+ |
-| Agent | LangGraph + LangChain |
+| Agent | LangGraph + LangChain tools |
 | LLM | `DeepSeekChatOpenAI` → `deepseek-v4-pro` (thinking mode) |
-| Market data | yfinance, akshare, pycoingecko, WallStreetCN |
+| Market data | yfinance, akshare, CoinGecko, WallStreetCN |
 | Persistence | SQLite + SQLAlchemy 2.0 |
 | Scheduler | APScheduler |
-| Notifications | Telegram Bot (optional) |
+| Notifications | Telegram Bot (send-only, optional) |
 | Runtime | Python 3.9+ |
 
 ## Validation
@@ -117,22 +163,22 @@ Before public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. Afte
 PYTHONPATH=. python3 -m pytest tests -v
 ```
 
-## Project Structure
+## Project structure
 
 ```text
 portfolio-agent/
 ├── adapters/           # Market / news data adapters
 ├── agent/              # LangGraph graph, prompts, tools, DeepSeek client
-├── app/                # Streamlit UI, i18n, theme
+├── app/                # Streamlit UI, i18n, cyberpunk theme
 ├── db/                 # Models, repository, migrations
 ├── scheduler/          # Cron jobs and manual triggers
 ├── notifier/           # Telegram
-├── docs/screenshots/   # App showcase images
+├── docs/screenshots/   # README product shots
 ├── tests/
-└── .streamlit/         # Production UI config (toolbarMode=minimal)
+└── .streamlit/         # toolbarMode=minimal
 ```
 
-## Design Documents
+## Design documents
 
 - [Original design](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)
 - [Cyberpunk dashboard design](docs/superpowers/specs/2026-07-18-cyberpunk-ui-design.md)
