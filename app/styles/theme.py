@@ -242,6 +242,11 @@ def build_ask_agent_dock_html():
 
     Do NOT reject hosts for nested-block count — chat_message / status / stream
     create many nested blocks and would undock mid-reply.
+
+    Open-panel resize uses a custom top-left handle (native CSS ``resize``
+    only offers a bottom-right grip). Drag locks aspect ratio so width and
+    height change together; the panel stays anchored at bottom-right. The
+    composer textarea is stretched to fill leftover panel height.
     """
     return (
         """
@@ -252,6 +257,7 @@ def build_ask_agent_dock_html():
   const doc = window.parent.document;
   const HOST = "pa-ask-agent-dock-host";
   const OPEN = "pa-ask-agent-dock-open";
+  const HANDLE = "pa-ask-agent-resize-handle";
   const SIZE_KEY = "pa-ask-agent-dock-size";
 
   function looksLikeMainPage(block) {
@@ -292,25 +298,166 @@ def build_ask_agent_dock_html():
     } catch (e) {}
   }
 
-  function watchResize(host) {
-    if (host.__paResizeBound) return;
-    host.__paResizeBound = true;
-    let timer = null;
+  function saveSize(host) {
+    const r = host.getBoundingClientRect();
+    if (r.width < 200 || r.height < 200) return;
+    try {
+      window.parent.localStorage.setItem(
+        SIZE_KEY,
+        JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
+      );
+    } catch (e) {}
+  }
+
+  function sizeBounds() {
+    const win = window.parent;
+    return {
+      minW: 280,
+      minH: 320,
+      maxW: Math.max(280, win.innerWidth - 24),
+      maxH: Math.max(320, win.innerHeight - 32)
+    };
+  }
+
+  function applySize(host, w, h) {
+    host.style.setProperty("width", Math.round(w) + "px", "important");
+    host.style.setProperty("height", Math.round(h) + "px", "important");
+  }
+
+  function fillComposer(host) {
+    if (!host || !host.classList.contains(OPEN)) return;
+    const form = host.querySelector('[data-testid="stForm"]');
+    if (!form) return;
+    const ta = form.querySelector("textarea");
+    if (!ta) return;
+    const submit = form.querySelector('[data-testid="stFormSubmitButton"]');
+    const hostRect = host.getBoundingClientRect();
+    const taRect = ta.getBoundingClientRect();
+    const submitH = submit ? Math.ceil(submit.getBoundingClientRect().height) : 44;
+    const nextH = Math.max(80, Math.floor(hostRect.bottom - taRect.top - submitH - 12));
+    ta.style.setProperty("height", nextH + "px", "important");
+  }
+
+  function positionHandle(host, handle) {
+    const r = host.getBoundingClientRect();
+    handle.style.position = "fixed";
+    handle.style.top = Math.round(r.top) + "px";
+    handle.style.left = Math.round(r.left) + "px";
+    handle.style.zIndex = "999999";
+  }
+
+  function getHandle() {
+    return doc.getElementById("pa-ask-agent-resize-el");
+  }
+
+  function bindHandle(handle) {
+    if (handle.__paResizeBound) return;
+    handle.__paResizeBound = true;
+    handle.addEventListener("pointerdown", function (e) {
+      const host = handle.__paHost;
+      if (!host || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = host.getBoundingClientRect();
+      const startW = rect.width;
+      const startH = rect.height;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const ratio = startW / Math.max(startH, 1);
+      handle.setPointerCapture(e.pointerId);
+      host.classList.add("pa-ask-agent-resizing");
+
+      function onMove(ev) {
+        const dx = startX - ev.clientX;
+        const dy = startY - ev.clientY;
+        let newW = startW + dx;
+        let newH = startH + dy;
+        if (Math.abs(dx) / startW >= Math.abs(dy) / startH) {
+          newH = newW / ratio;
+        } else {
+          newW = newH * ratio;
+        }
+        const b = sizeBounds();
+        if (newW > b.maxW) { newW = b.maxW; newH = newW / ratio; }
+        if (newH > b.maxH) { newH = b.maxH; newW = newH * ratio; }
+        if (newW < b.minW) { newW = b.minW; newH = newW / ratio; }
+        if (newH < b.minH) { newH = b.minH; newW = newH * ratio; }
+        newW = Math.min(b.maxW, Math.max(b.minW, newW));
+        newH = Math.min(b.maxH, Math.max(b.minH, newH));
+        applySize(host, newW, newH);
+        positionHandle(host, handle);
+        fillComposer(host);
+      }
+
+      function onUp(ev) {
+        try { handle.releasePointerCapture(ev.pointerId); } catch (err) {}
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        host.classList.remove("pa-ask-agent-resizing");
+        saveSize(host);
+        positionHandle(host, handle);
+        fillComposer(host);
+      }
+
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    });
+  }
+
+  function ensureHandle(host) {
+    let handle = getHandle();
+    if (!handle) {
+      handle = doc.createElement("div");
+      handle.id = "pa-ask-agent-resize-el";
+      handle.className = HANDLE;
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-label", "Resize Ask Agent");
+      handle.title = "Resize";
+      doc.body.appendChild(handle);
+      bindHandle(handle);
+    }
+    handle.__paHost = host;
+    handle.style.display = "";
+    positionHandle(host, handle);
+  }
+
+  function clearHandle(host) {
+    if (host) host.classList.remove("pa-ask-agent-resizing");
+    const handle = getHandle();
+    if (handle) {
+      handle.style.display = "none";
+      handle.__paHost = null;
+    }
+  }
+
+  function watchFill(host) {
+    if (host.__paFillWatch) return;
+    host.__paFillWatch = true;
     const ro = new ResizeObserver(function () {
       if (!host.classList.contains(OPEN)) return;
-      clearTimeout(timer);
-      timer = setTimeout(function () {
-        const r = host.getBoundingClientRect();
-        if (r.width < 200 || r.height < 200) return;
-        try {
-          window.parent.localStorage.setItem(
-            SIZE_KEY,
-            JSON.stringify({ w: Math.round(r.width), h: Math.round(r.height) })
-          );
-        } catch (e) {}
-      }, 200);
+      fillComposer(host);
     });
     ro.observe(host);
+  }
+
+  function openHost(host) {
+    host.classList.add(OPEN);
+    if (!host.classList.contains("pa-ask-agent-resizing")) {
+      applySavedSize(host);
+    }
+    ensureHandle(host);
+    watchFill(host);
+    fillComposer(host);
+    requestAnimationFrame(function () { fillComposer(host); });
+  }
+
+  function closeHost(host) {
+    host.classList.remove(OPEN);
+    host.style.removeProperty("width");
+    host.style.removeProperty("height");
+    clearHandle(host);
   }
 
   function dock() {
@@ -323,17 +470,14 @@ def build_ask_agent_dock_html():
       const existing = doc.querySelector("." + HOST);
       if (existing && existing.contains(root) && !looksLikeMainPage(existing)) {
         if (doc.querySelector(".pa-ask-agent-panel")) {
-          existing.classList.add(OPEN);
-          applySavedSize(existing);
-          watchResize(existing);
+          openHost(existing);
         } else {
-          existing.classList.remove(OPEN);
-          existing.style.removeProperty("width");
-          existing.style.removeProperty("height");
+          closeHost(existing);
         }
         return true;
       }
       doc.querySelectorAll("." + HOST).forEach(function (el) {
+        clearHandle(el);
         el.classList.remove(HOST);
         el.classList.remove(OPEN);
       });
@@ -342,21 +486,15 @@ def build_ask_agent_dock_html():
 
     doc.querySelectorAll("." + HOST).forEach(function (el) {
       if (el !== host) {
+        closeHost(el);
         el.classList.remove(HOST);
-        el.classList.remove(OPEN);
-        el.style.removeProperty("width");
-        el.style.removeProperty("height");
       }
     });
     host.classList.add(HOST);
     if (doc.querySelector(".pa-ask-agent-panel")) {
-      host.classList.add(OPEN);
-      applySavedSize(host);
-      watchResize(host);
+      openHost(host);
     } else {
-      host.classList.remove(OPEN);
-      host.style.removeProperty("width");
-      host.style.removeProperty("height");
+      closeHost(host);
     }
     return true;
   }
@@ -379,6 +517,18 @@ def build_ask_agent_dock_html():
       }, 50);
     });
     window.__paAskAgentDockObs.observe(doc.body, { childList: true, subtree: true });
+  }
+
+  if (!window.parent.__paAskAgentResizeWin) {
+    window.parent.__paAskAgentResizeWin = true;
+    window.parent.addEventListener("resize", function () {
+      const handle = getHandle();
+      const host = handle && handle.__paHost;
+      if (host && handle.style.display !== "none") {
+        positionHandle(host, handle);
+        fillComposer(host);
+      }
+    });
   }
 """
         + _hide_iframe_host_js()

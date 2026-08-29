@@ -365,15 +365,22 @@ button.pa-locale-toggle:hover {
   bottom: 1rem !important;
   left: auto !important;
   z-index: 999990 !important;
-  width: auto !important;
-  max-width: min(360px, calc(100vw - 1.5rem)) !important;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
 
-/* Open panel: resizable floating card. Avoid !important on width/height so
-   CSS resize + localStorage sizes can stick. Sticky form keeps input usable. */
+/* FAB only — !important width here would also lock the open panel (native
+   CSS resize then changes height alone). */
+.pa-ask-agent-dock-host:not(.pa-ask-agent-dock-open) {
+  width: auto !important;
+  max-width: min(360px, calc(100vw - 1.5rem)) !important;
+}
+
+/* Open panel: JS top-left handle scales width+height together (aspect lock).
+   Avoid !important on width/height so localStorage sizes can stick. Extra
+   left padding keeps the title clear of the NW grip. Composer fills leftover
+   height; form stays sticky at the bottom when the thread is long. */
 .pa-ask-agent-dock-host.pa-ask-agent-dock-open {
   display: flex !important;
   flex-direction: column !important;
@@ -385,24 +392,116 @@ button.pa-locale-toggle:hover {
   max-height: calc(100vh - 2rem);
   overflow-x: hidden !important;
   overflow-y: auto !important;
-  resize: both;
+  resize: none;
   background: rgba(10, 14, 23, 0.96) !important;
   border: 1px solid rgba(0, 240, 255, 0.35) !important;
   border-radius: 14px !important;
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.55),
     0 0 20px rgba(0, 240, 255, 0.12) !important;
-  padding: 0.55rem 0.7rem 0.8rem !important;
+  padding: 0.55rem 0.7rem 0.8rem 1.35rem !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stElementContainer"]:has([data-testid="stForm"]),
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="element-container"]:has([data-testid="stForm"]) {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open textarea,
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stTextArea"] textarea {
+  resize: none !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.pa-ask-agent-resize-handle {
+  position: fixed;
+  width: 22px;
+  height: 22px;
+  z-index: 999999;
+  cursor: nwse-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.pa-ask-agent-resize-handle::before,
+.pa-ask-agent-resize-handle::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-top: 2px solid rgba(0, 240, 255, 0.75);
+  border-left: 2px solid rgba(0, 240, 255, 0.75);
+}
+
+.pa-ask-agent-resize-handle::before {
+  top: 5px;
+  left: 5px;
+  width: 11px;
+  height: 11px;
+}
+
+.pa-ask-agent-resize-handle::after {
+  top: 9px;
+  left: 9px;
+  width: 6px;
+  height: 6px;
+  opacity: 0.7;
+}
+
+.pa-ask-agent-resize-handle:hover::before,
+.pa-ask-agent-resize-handle:hover::after {
+  border-color: rgba(0, 240, 255, 1);
+  filter: drop-shadow(0 0 4px rgba(0, 240, 255, 0.8));
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-resizing {
+  user-select: none !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-resizing iframe {
+  pointer-events: none !important;
 }
 
 .pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] {
   position: sticky !important;
   bottom: 0 !important;
   z-index: 5 !important;
-  margin-top: auto !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 160px !important;
+  width: 100% !important;
+  margin-top: 0.35rem !important;
   background: rgba(10, 14, 23, 0.98) !important;
   padding-top: 0.35rem !important;
   border-top: 1px solid rgba(0, 240, 255, 0.2) !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] form,
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-testid="stVerticalBlock"] {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-testid="stElementContainer"]:has(textarea),
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-testid="element-container"]:has(textarea),
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-testid="stTextArea"],
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-testid="stTextArea"] > div,
+.pa-ask-agent-dock-host.pa-ask-agent-dock-open [data-testid="stForm"] [data-baseweb="textarea"] {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .pa-ask-agent-dock-host:not(.pa-ask-agent-dock-open) button[kind="primary"],

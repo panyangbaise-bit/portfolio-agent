@@ -86,9 +86,14 @@ def test_ask_agent_open_panel_css_is_resizable():
     css = load_cyberpunk_css()
     start = css.index("Ask Agent floating chat")
     ask_css = css[start:]
-    assert "resize: both" in ask_css
+    # Native CSS resize is bottom-right only; custom NW handle scales both axes.
+    assert "resize: both" not in ask_css
+    assert ".pa-ask-agent-resize-handle" in ask_css
+    assert "nwse-resize" in ask_css
+    assert ":not(.pa-ask-agent-dock-open)" in ask_css
     assert "stForm" in ask_css
     assert "position: sticky" in ask_css
+    assert "flex: 1 1 auto" in ask_css
 
 
 def test_ask_agent_dock_js_refuses_main_page_hosts():
@@ -102,4 +107,9 @@ def test_ask_agent_dock_js_refuses_main_page_hosts():
     # Mid-reply undock bug: nested-block count must not reject the host.
     assert "if (nested > 8)" not in html
     assert "SIZE_KEY" in html
-    assert "ResizeObserver" in html
+    assert "pa-ask-agent-resize-handle" in html
+    assert "pa-ask-agent-resize-el" in html
+    assert "ensureHandle" in html
+    assert "pointerdown" in html
+    assert "fillComposer" in html
+    assert "r.left" in html
