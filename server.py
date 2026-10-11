@@ -29,6 +29,7 @@ from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler
 from notifier.telegram import send_welcome
+from a2a.server import start_a2a_server
 
 init_db()
 migrate(engine)
@@ -42,6 +43,9 @@ logger.info(f"Adapters registered: {registry.markets}")
 
 start_scheduler()
 logger.info("Scheduler started.")
+
+start_a2a_server()
+logger.info("A2A bootstrap done.")
 
 send_welcome()
 logger.info("Bootstrap complete. Launching Streamlit...")

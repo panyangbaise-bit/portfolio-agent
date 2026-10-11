@@ -146,17 +146,17 @@ def job_hourly_news_poll():
 
 
 def job_monthly_trade_review():
-    run_id = _start_job_run("monthly_trade_review", "月度交易复盘")
-    logger.info("Starting monthly trade review...")
+    run_id = _start_job_run("monthly_trade_review", "月度总结")
+    logger.info("Starting monthly summary...")
     try:
         result = run_trade_review_analysis(days=31)
         if result:
-            logger.info(f"Trade review done: {result[:100]}...")
-            notify(f"📒 月度交易复盘\n\n{result}")
+            logger.info(f"Monthly summary done: {result[:100]}...")
+            notify(f"📒 月度总结\n\n{result}")
             _finish_job_run(run_id, "completed", result[:500])
         else:
-            logger.info("No recent trades; skipping trade review.")
-            _finish_job_run(run_id, "skipped", "No trades in the review window.")
+            logger.info("No holdings or trades; skipping monthly summary.")
+            _finish_job_run(run_id, "skipped", "No holdings or trades to summarize.")
     except Exception as e:
-        logger.error(f"Trade review failed: {e}")
+        logger.error(f"Monthly summary failed: {e}")
         _finish_job_run(run_id, "failed", str(e))

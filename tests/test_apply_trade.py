@@ -8,6 +8,11 @@ from db.models import Base
 from db.repository import apply_trade, create_holding, get_open_holdings
 
 
+@pytest.fixture(autouse=True)
+def _no_exit_review(monkeypatch):
+    monkeypatch.setattr("db.repository._schedule_exit_analysis", lambda *_args, **_kwargs: None)
+
+
 @pytest.fixture
 def session():
     engine = create_engine("sqlite://")

@@ -29,7 +29,7 @@ ALL_JOBS = [
     ("hk_after_market", "港股盘后分析"),
     ("crypto_daily", "Crypto每日分析"),
     ("hourly_news", "新闻轮询"),
-    ("monthly_trade_review", "月度交易复盘"),
+    ("monthly_trade_review", "月度总结"),
 ]
 
 JOB_TIMEOUT = 120  # seconds per job — DeepSeek API can be slow

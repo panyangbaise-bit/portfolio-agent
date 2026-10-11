@@ -27,6 +27,7 @@ __all__ = [
     "get_scheduler_status",
     "update_news_crontab",
     "get_news_crontab",
+    "job_cron",
     "trigger_job",
     "get_manual_run_status",
     "clear_manual_run_status",
@@ -51,6 +52,31 @@ _manual_runs: dict[str, dict] = {}
 NEWS_JOB_ID = "hourly_news"
 NEWS_JOB_NAME = "新闻轮询"
 
+# 5-field crontab plus the clock timezone for every fixed job.
+# News poll uses the editable crontab and APP_TIMEZONE.
+FIXED_JOB_CRONS = {
+    "us_after_market": ("30 7 * * *", "Asia/Shanghai"),
+    "cn_after_market": ("30 15 * * *", "Asia/Shanghai"),
+    "hk_after_market": ("30 16 * * *", "Asia/Hong_Kong"),
+    "crypto_daily": ("0 21 * * *", "Asia/Shanghai"),
+    "monthly_trade_review": ("0 21 1 * *", "Asia/Shanghai"),
+}
+
+
+def job_cron(job_id: str) -> tuple:
+    """Return ``(crontab, timezone)`` for a scheduled job."""
+    if job_id == NEWS_JOB_ID:
+        return get_news_crontab(), config.APP_TIMEZONE
+    spec = FIXED_JOB_CRONS.get(job_id)
+    if not spec:
+        return "", config.APP_TIMEZONE
+    return spec
+
+
+def _fixed_trigger(job_id: str) -> CronTrigger:
+    expr, tz = job_cron(job_id)
+    return validate_crontab(expr, timezone=tz)
+
 
 def _news_trigger(crontab: Optional[str] = None) -> CronTrigger:
     expr = crontab if crontab is not None else get_news_crontab()
@@ -73,28 +99,28 @@ def start_scheduler():
 
     _scheduler.add_job(
         job_after_market_us,
-        trigger=CronTrigger(hour=7, minute=30, timezone="Asia/Shanghai"),
+        trigger=_fixed_trigger("us_after_market"),
         id="us_after_market",
         name="美股盘后分析",
     )
 
     _scheduler.add_job(
         job_after_market_cn,
-        trigger=CronTrigger(hour=15, minute=30, timezone="Asia/Shanghai"),
+        trigger=_fixed_trigger("cn_after_market"),
         id="cn_after_market",
         name="A股盘后分析",
     )
 
     _scheduler.add_job(
         job_after_market_hk,
-        trigger=CronTrigger(hour=16, minute=30, timezone="Asia/Hong_Kong"),
+        trigger=_fixed_trigger("hk_after_market"),
         id="hk_after_market",
         name="港股盘后分析",
     )
 
     _scheduler.add_job(
         job_after_market_crypto,
-        trigger=CronTrigger(hour=21, minute=0, timezone="Asia/Shanghai"),
+        trigger=_fixed_trigger("crypto_daily"),
         id="crypto_daily",
         name="Crypto每日分析",
     )
@@ -110,11 +136,9 @@ def start_scheduler():
 
     _scheduler.add_job(
         job_monthly_trade_review,
-        trigger=CronTrigger(
-            day=1, hour=21, minute=0, timezone="Asia/Shanghai",
-        ),
+        trigger=_fixed_trigger("monthly_trade_review"),
         id="monthly_trade_review",
-        name="月度交易复盘",
+        name="月度总结",
     )
 
     _scheduler.start()
@@ -136,13 +160,14 @@ def get_scheduler_status() -> list[dict]:
         return []
     jobs = []
     for job in _scheduler.get_jobs():
+        expr, tz = job_cron(job.id)
         entry = {
             "id": job.id,
             "name": job.name,
-            "next_run": str(job.next_run_time) if job.next_run_time else "paused",
+            "next_run": job.next_run_time,
+            "crontab": expr,
+            "timezone": tz,
         }
-        if job.id == NEWS_JOB_ID:
-            entry["crontab"] = get_news_crontab()
         jobs.append(entry)
     return jobs
 

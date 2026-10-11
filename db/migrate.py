@@ -72,6 +72,45 @@ def _backfill_recommendation_session_ids(conn: Connection) -> None:
         )
 
 
+def _backfill_opening_buys(conn: Connection) -> None:
+    """Give open holdings with an empty ledger an opening buy at current cost.
+
+    Positions that already have sells are left alone: their residual cost is
+    not the original purchase price, so inventing a buy would distort return.
+    """
+    rows = conn.execute(
+        text(
+            """
+            SELECT h.id, h.shares, h.cost_basis, h.created_at
+            FROM holdings h
+            WHERE lower(coalesce(h.status, 'open')) != 'closed'
+              AND coalesce(h.shares, 0) > 0
+              AND coalesce(h.cost_basis, 0) > 0
+              AND NOT EXISTS (
+                    SELECT 1 FROM transactions t WHERE t.holding_id = h.id
+              )
+            """
+        )
+    ).fetchall()
+    for holding_id, shares, cost_basis, created_at in rows:
+        conn.execute(
+            text(
+                """
+                INSERT INTO transactions
+                    (holding_id, action, shares, price, date, notes)
+                VALUES
+                    (:hid, 'buy', :shares, :price, coalesce(:date, CURRENT_TIMESTAMP), 'opening')
+                """
+            ),
+            {
+                "hid": holding_id,
+                "shares": shares,
+                "price": cost_basis,
+                "date": created_at,
+            },
+        )
+
+
 MIGRATIONS = [
     # Each entry: (version, sql_statement | callable)
     # Version 1: add name column to holdings (added 2026-07-18)
@@ -142,6 +181,10 @@ MIGRATIONS = [
     (
         "v6_backfill_recommendation_session_ids",
         _backfill_recommendation_session_ids,
+    ),
+    (
+        "v7_backfill_opening_buys",
+        _backfill_opening_buys,
     ),
 ]
 

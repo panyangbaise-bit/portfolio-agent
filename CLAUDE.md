@@ -44,6 +44,10 @@ Copy `.env.example` to `.env`:
 | `AUTH_ENABLED` | No | `false` (set `true` before public deploy) |
 | `AUTH_PASSWORD` | If auth on | — (server-side only) |
 | `AUTH_MAX_FAILURES` | No | `3` then IP blacklisted |
+| `A2A_ENABLED` | No | `false` (A2A HTTP server) |
+| `A2A_PORT` | No | `8502` |
+| `A2A_TOKEN` | If A2A on | — (bearer token; startup refuses an empty token) |
+| `A2A_PUBLIC_URL` | No | `http://127.0.0.1:8502/` (set the public URL behind a proxy) |
 | `TELEGRAM_BOT_TOKEN` | No | — (notifications disabled) |
 | `TELEGRAM_CHAT_ID` | No | — |
 | `TELEGRAM_POLL_TIMEOUT` | No | `30` seconds (unused; send-only) |
@@ -55,6 +59,7 @@ Copy `.env.example` to `.env`:
 ## Architecture
 
 ```
+a2a/          Optional A2A JSON-RPC server (agent card, message/send, tasks/get)
 adapters/     Market data adapters (MarketAdapter ABC → yfinance/akshare/CoinGecko/WallStreetCN)
 agent/        LangGraph ReAct loop, system prompt, LangChain tools, session tracking
 app/          Streamlit dashboard (main.py + components/ + views/)
@@ -64,7 +69,7 @@ app/styles/   Cyberpunk theme CSS + inject_cyberpunk_theme() / inject_locale_tog
 app/views/    Page bodies loaded by sidebar radio (must NOT be named pages/ — Streamlit auto-tabs). Nav: Dashboard → Holdings → Watchlist → Recommendations → Jobs → History
 deploy/       One-shot Ubuntu server install (`setup-server.sh` + systemd unit)
 db/           SQLAlchemy 2.0 models (10 tables) + repository + additive migration system
-scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly trade review
+scheduler/    APScheduler — 4 after-market jobs + editable news crontab + monthly summary
 notifier/     Telegram Bot (send-only; no getUpdates long-poll)
 config.py     Central config from env vars (+ LangSmith env bootstrap)
 tests/        pytest coverage for theme, i18n, price fallback, job-run persistence, trades, agent session detail, and recommendation session_id injection/backfill
@@ -151,7 +156,7 @@ Follow-ups in the floating chat reuse one `agent_sessions` row (`job_id=ask_agen
 
 ### Manual job triggers
 
-**Jobs** page **Scheduled Jobs** table has a last-column "▶ Run Now" button per row that calls `scheduler.cron.trigger_job(job_id)`. Each job runs in a `threading.Thread` daemon thread. Status is tracked in `_manual_runs` dict — the Streamlit UI polls this to show running/completed/failed state. `clear_manual_run_status()` resets the button after the user acknowledges the result. Below the schedule table, **News poll schedule (crontab)** edits a 5-field cron (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Below the runtime log, **Agent Session Detail** lets you filter by job and inspect each session's summary, saved recommendations, and tool calls.
+**Jobs** page shows the latest monthly summary, then **Scheduled Jobs**. Each row shows a translated schedule (Chinese or English, plus the raw 5-field crontab) and a next-run time in `APP_TIMEZONE`. The last column is "▶ Run Now", which calls `scheduler.cron.trigger_job(job_id)` on a daemon thread. Status is tracked in `_manual_runs` — the UI polls it and `clear_manual_run_status()` resets the button after the user acknowledges the result. The news crontab editor translates the expression as it is edited (persisted in `data/scheduler_settings.json`, live `reschedule_job`). Save runs in the button `on_click` callback so the cleaned expression can be written back to `news_crontab_expr` before the input is drawn; assigning that key after `st.text_input` raises `StreamlitAPIException`. Descriptions that the translator does not understand fall back to the raw expression. Below the runtime log, **Agent Session Detail** filters by job, including Ask Agent, exit review, and A2A.
 
 ### Localization
 
@@ -191,15 +196,17 @@ DB timestamps are UTC. UI/logs convert via `app.timeutil.format_display_time()` 
 
 ### Holdings buy/sell ledger
 
-Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-average cost; sells use broker-style residual cost `(shares×cost − sell_shares×sell_price) / remaining` (selling at a loss raises remaining cost — matches common CN/HK brokers). Full exit sets `shares=0` and `status=closed` (row kept so transaction history survives). Dashboard / `get_portfolio` / news poll use `get_open_holdings()` only. Accepting a recommendation does **not** auto-apply a trade.
+Holdings page **Buy / Sell** panel calls `apply_trade()`: buys use weighted-average cost; sells use broker-style residual cost `(shares×cost − sell_shares×sell_price) / remaining` (selling at a loss raises remaining cost — matches common CN/HK brokers). `create_holding` also writes an opening `buy` so the ledger can be replayed. Full exit sets `shares=0` and `status=closed` (row kept so transaction history survives) and starts a background exit review (`job_id=exit_analysis`) — the form does not wait on the model. Editing shares to 0 does not start that review. The transaction history shows realized P&L for closed names. Dashboard / `get_portfolio` / news poll use `get_open_holdings()` only. Accepting a recommendation does **not** auto-apply a trade.
+
+Per-row P&L stays on that residual cost. **Total return** (KPI and `get_return_summary`) replays the ledger with average cost: realized on sells plus unrealized on shares still open, including closed positions, converted at the current CNY rate. The Dashboard realized/open split is inside the Total Return card (`.cp-pnl-metric .split`), one row each, not a caption under the frame. A partial sale is not added twice. If a holding's share count was edited outside the ledger, that name falls back to residual cost instead of inventing a buy. Migration `v7_backfill_opening_buys` adds an opening buy only for open holdings that have no transactions at all.
 
 ### News poll
 
 `hourly_news` (job id unchanged) fetches **ticker news + WallStreetCN headlines/latest**, then asks the agent to assess both holding-specific and macro/headline impact (`poll_news_for_portfolio` in `agent/core.py`). Default crontab `0 8-22/2 * * *` in `APP_TIMEZONE` (08:00–22:00 every 2 hours); override via `NEWS_CRONTAB` env or the Jobs page editor (`data/scheduler_settings.json`).
 
-### Monthly trade review
+### Monthly summary
 
-`monthly_trade_review` runs on the 1st at 21:00 Asia/Shanghai. It loads recent `transactions` and asks the agent to review timing/discipline (`run_trade_review_analysis`). No trades in the window → `job_runs` status `skipped` (no LLM call).
+`monthly_trade_review` (job id unchanged) runs on the 1st at 21:00 Asia/Shanghai and is labeled 月度总结. `run_trade_review_analysis` always calls the model when any holding or in-window trade exists, including a month with no trades. It skips only when the book and the window are both empty. The prompt includes `get_return_summary` figures, holdings, trades, and exits closed in the window. The Jobs page shows the latest summary above the schedule.
 
 ### Telegram chat ID discovery
 
@@ -219,7 +226,11 @@ Ask Agent submits from the floating panel, then streams inside the panel via `ru
 
 ### Portfolio weights are CNY-normalized
 
-`get_portfolio` converts each holding with `app.fx.get_cny_rates` and computes `weight_pct` from `market_value_cny` (same basis as Dashboard KPIs). Never sum native USD/HKD/CNY face amounts — that inflated CN weights (~67% vs ~23%).
+`get_portfolio` converts each holding with `app.fx.get_cny_rates` and computes `weight_pct` from `market_value_cny` (same basis as Dashboard market value). Never sum native USD/HKD/CNY face amounts — that inflated CN weights (~67% vs ~23%). `get_portfolio` `pnl_pct` is residual-cost float, not total return — use `get_return_summary` for that.
+
+### A2A server
+
+`A2A_ENABLED=true` starts a standard-library HTTP server from `server.py` before Streamlit (`a2a/server.py`, default port 8502). `GET /.well-known/agent-card.json` is public. `message/send` and `tasks/get` require `Authorization: Bearer <A2A_TOKEN>`; an enabled server with an empty token refuses to start. `message/send` returns a `working` task and finishes in the background via `run_ad_hoc_query_stream` (`job_id=a2a`). The same `contextId` reuses one in-process session until restart. Set `A2A_PUBLIC_URL` when the card must advertise a proxy address.
 
 ### A-share OTC fund NAV is T+1
 

@@ -33,6 +33,7 @@ SYSTEM_PROMPT = """你是一个个人投资组合管理 agent，服务于一位�
 - 卫星仓重点查短周期 K 线（1mo-3mo）+ 技术指标
 - A 股基金/指数联接：不要只用价和 K 线——必须 get_fund_info 了解跟踪标的与成分暴露
 - **仓位权重**：get_portfolio() 的 weight_pct / market_value_cny 已按人民币折算（与 Dashboard 一致）；禁止用原币市值混算权重
+- **总收益**：含已清仓已实现盈亏的总收益以 get_return_summary() 为准。get_portfolio() 的 pnl_pct 是券商残馀成本下的浮动盈亏，分批卖出后不等于真实浮动，也不含已清仓收益
 - **A 股场外净值 T+1**：基金/ETF联接的 get_price 返回单位净值（quote_type=nav），change_pct 是相对上一净值日，不是「今日盘中涨跌」；表述时用 nav_date /「净值日涨跌」
 - 不要每次都全量拉所有标的的数据——只查有新闻或异常的标的
 - 财报季前后，优先查 financials
@@ -103,13 +104,39 @@ NEWS_TRIGGER_PROMPT_EXTRA = """
 """
 
 TRADE_REVIEW_PROMPT_EXTRA = """
-## 当前任务：投资操作复盘（近 {days} 天）
+## 当前任务：月度总结（近 {days} 天）
 
-以下是用户近期的买入/卖出记录（投资操作日志）：
+以下数字已按流水重放算好（含已清仓已实现，人民币）。不要用 get_portfolio 的 pnl_pct 代替总收益；需要核对时调用 get_return_summary()。
+
+{return_summary}
+
+持仓：
+{holding_summary}
+
+近 {days} 天成交：
 {trade_summary}
 
-请完成复盘：
-1. 调用 get_trade_history()、get_portfolio()、get_recommendation_history() 核对操作与近期建议。
-2. 评估买卖时机、仓位纪律（核心/卫星）、是否与此前建议一致。
-3. 仅当需要新的仓位调整且相对近期建议有变化时，才 save_recommendation；否则只给文字复盘结论。
+本月清仓（已实现盈亏）：
+{closed_summary}
+
+请写月度总结。即使没有成交也要说明组合变化，不要因为没有操作就结束：
+1. 区间总收益、已实现与持仓浮动、仓位结构（核心/卫星）。
+2. 本月成交与清仓：时机、纪律、是否符合此前建议。没有成交就写「本月无操作」并评价现有持仓。
+3. 调用 get_recommendation_history() 核对建议执行情况。
+4. 仅当需要新的仓位调整且相对近期建议有变化时，才 save_recommendation；否则只给文字总结。
+"""
+
+EXIT_ANALYSIS_PROMPT_EXTRA = """
+## 当前任务：清仓复盘
+
+标的 {ticker}（{market}，{position_type}）已卖光。以下流水和已实现盈亏已算好，不要改口径。
+
+{ledger}
+
+已实现盈亏：{realized} {currency}（约 ¥{realized_cny}）
+
+请只做文字复盘：
+1. 买卖时机、持有过程、仓位纪律（核心/卫星）。
+2. 调用 get_recommendation_history() 看是否符合此前建议。
+3. 不要 save_recommendation。标的已清仓，不要为它再保存买卖建议。
 """

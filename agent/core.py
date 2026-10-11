@@ -15,12 +15,18 @@ from agent.graph import agent_graph
 from agent.session import AgentSessionManager
 from agent.system_prompt import (
     AFTER_MARKET_PROMPT_EXTRA,
+    EXIT_ANALYSIS_PROMPT_EXTRA,
     NEWS_TRIGGER_PROMPT_EXTRA,
     TRADE_REVIEW_PROMPT_EXTRA,
 )
 from adapters.news import news_adapter
 from config import config
-from db.repository import get_recent_transactions, get_session as get_db_session
+from db.repository import (
+    get_all_holdings,
+    get_recent_transactions,
+    get_session as get_db_session,
+    get_transactions_for_holding,
+)
 
 
 _MARKET_JOB_IDS = {
@@ -127,25 +133,95 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
     return text
 
 
-def run_trade_review_analysis(days: int = 31) -> Optional[str]:
-    """Review recent buy/sell operations. Returns None if there are no trades."""
+def compose_monthly_context(payload: dict, days: int = 31) -> Optional[str]:
+    """Build the monthly-summary prompt. None when there is nothing to summarize."""
+    if not payload.get("holdings") and not payload.get("trade_lines"):
+        return None
+    trade_lines = payload.get("trade_lines") or []
+    trade_summary = "\n".join(trade_lines) if trade_lines else "近窗口无成交。"
+    closed_lines = payload.get("closed_lines") or []
+    closed_summary = "\n".join(closed_lines) if closed_lines else "本月无清仓。"
+    holding_lines = payload.get("holding_lines") or []
+    holding_summary = "\n".join(holding_lines) if holding_lines else "无持仓。"
+    return TRADE_REVIEW_PROMPT_EXTRA.format(
+        days=days,
+        return_summary=payload.get("return_summary") or "总收益暂不可用。",
+        holding_summary=holding_summary,
+        trade_summary=trade_summary,
+        closed_summary=closed_summary,
+    )
+
+
+def _load_monthly_inputs(days: int) -> dict:
+    """Snapshot holdings, the review window, and the shared return figures."""
+    from agent.tools import _get_return_summary_inner
+
+    summary = _get_return_summary_inner()
     db = get_db_session()
     try:
-        txns = get_recent_transactions(db, days=days)
-        if not txns:
-            return None
-        lines = []
-        for txn in txns:
+        holdings = get_all_holdings(db)
+        recent = get_recent_transactions(db, days=days)
+        positions = summary.get("positions") or [] if isinstance(summary, dict) else []
+        by_id = {row.get("holding_id"): row for row in positions}
+        holding_lines = []
+        for holding in holdings:
+            holding_lines.append(
+                f"- {holding.ticker} {holding.market} {holding.status} "
+                f"{holding.position_type} shares={holding.shares}"
+            )
+        trade_lines = []
+        closed_ids = set()
+        for txn in recent:
             holding = txn.holding
             ticker = holding.ticker if holding else "?"
             ts = txn.date.strftime("%Y-%m-%d") if txn.date else "—"
             note = f" | {txn.notes}" if txn.notes else ""
-            lines.append(
+            trade_lines.append(
                 f"- [{ts}] {ticker} {txn.action} {txn.shares} @ {txn.price}{note}"
             )
-        trade_summary = "\n".join(lines)
+            if (
+                holding
+                and (txn.action or "").lower() == "sell"
+                and (holding.status or "") == "closed"
+            ):
+                closed_ids.add(holding.id)
+        closed_lines = []
+        for holding_id in sorted(closed_ids):
+            row = by_id.get(holding_id) or {}
+            closed_lines.append(
+                f"- {row.get('ticker', holding_id)} {row.get('market', '')} "
+                f"realized {row.get('realized_pnl')} "
+                f"(¥{row.get('realized_pnl_cny')})"
+            )
+        if isinstance(summary, dict) and summary.get("error"):
+            return_summary = summary["error"]
+        elif isinstance(summary, dict):
+            return_summary = (
+                f"市值 ¥{summary.get('market_value_cny')}，"
+                f"累计买入 ¥{summary.get('invested_cny')}，"
+                f"已实现 ¥{summary.get('realized_pnl_cny')}，"
+                f"持仓浮动 ¥{summary.get('unrealized_pnl_cny')}，"
+                f"总收益 ¥{summary.get('total_pnl_cny')} "
+                f"({summary.get('total_pnl_pct')}%)"
+            )
+        else:
+            return_summary = "总收益暂不可用。"
+        return {
+            "holdings": holding_lines,
+            "holding_lines": holding_lines,
+            "trade_lines": trade_lines,
+            "closed_lines": closed_lines,
+            "return_summary": return_summary,
+        }
     finally:
         db.close()
+
+
+def run_trade_review_analysis(days: int = 31) -> Optional[str]:
+    """Monthly portfolio summary. Returns None only when there is nothing to review."""
+    context = compose_monthly_context(_load_monthly_inputs(days), days=days)
+    if context is None:
+        return None
 
     session = AgentSessionManager(
         triggered_by="schedule",
@@ -154,12 +230,8 @@ def run_trade_review_analysis(days: int = 31) -> Optional[str]:
     )
     session.start()
 
-    context = TRADE_REVIEW_PROMPT_EXTRA.format(
-        days=days,
-        trade_summary=trade_summary,
-    )
     message = HumanMessage(
-        content="请复盘近期投资操作日志，评估买卖时机与仓位纪律，必要时给出调整建议。"
+        content="请写月度总结：总收益、仓位、本月成交与清仓，以及建议执行情况。没有成交也要评价当前组合。"
     )
 
     result = _invoke_agent(session, {
@@ -169,6 +241,85 @@ def run_trade_review_analysis(days: int = 31) -> Optional[str]:
         "extra_context": context,
     })
 
+    last_msg = result["messages"][-1]
+    text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+    session.finish(summary=text)
+    return text
+
+
+def build_exit_context(
+    ticker: str,
+    market: str,
+    position_type: str,
+    ledger: str,
+    realized: float,
+    currency: str,
+    realized_cny,
+) -> str:
+    """Prompt for a sold-out position. The model is told not to save a recommendation."""
+    return EXIT_ANALYSIS_PROMPT_EXTRA.format(
+        ticker=ticker,
+        market=market,
+        position_type=position_type,
+        ledger=ledger or "无流水。",
+        realized=f"{realized:+.2f}",
+        currency=currency,
+        realized_cny=realized_cny,
+    )
+
+
+def run_exit_analysis(holding_id: int, txn_id: int) -> str:
+    """Review one fully exited holding. Raises if the holding is missing."""
+    from app.components.portfolio_valuation import position_pnl
+    from app.fx import currency_for_market, get_cny_rates
+    from db.models import Holding
+
+    db = get_db_session()
+    try:
+        holding = db.query(Holding).filter(Holding.id == holding_id).first()
+        if not holding:
+            raise ValueError(f"Holding not found: {holding_id}")
+        txns = get_transactions_for_holding(db, holding.id)
+        ticker = holding.ticker
+        market = holding.market
+        position_type = holding.position_type
+        leg = position_pnl(holding, txns, holding.cost_basis)
+        lines = []
+        for txn in sorted(txns, key=lambda row: row.id or 0):
+            ts = txn.date.strftime("%Y-%m-%d") if txn.date else "—"
+            note = f" | {txn.notes}" if txn.notes else ""
+            lines.append(f"- [{ts}] {txn.action} {txn.shares} @ {txn.price}{note}")
+        currency = currency_for_market(market)
+        rates = get_cny_rates((market,))
+        rate = rates.get(market.upper())
+        realized_cny = round(leg["realized"] * rate, 2) if rate is not None else "—"
+        context = build_exit_context(
+            ticker,
+            market,
+            position_type,
+            "\n".join(lines),
+            leg["realized"],
+            currency,
+            realized_cny,
+        )
+    finally:
+        db.close()
+
+    session = AgentSessionManager(
+        triggered_by="event",
+        job_id="exit_analysis",
+        market=market,
+    )
+    session.start()
+    message = HumanMessage(
+        content=f"请复盘 {ticker} 的清仓（成交 #{txn_id}）。只给文字结论，不要 save_recommendation。"
+    )
+    result = _invoke_agent(session, {
+        "messages": [message],
+        "session_id": session.session_id,
+        "triggered_by": "event",
+        "extra_context": context,
+    })
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
     session.finish(summary=text)
@@ -214,6 +365,8 @@ def run_ad_hoc_query_stream(
     question: str,
     history: Optional[list] = None,
     session_id: Optional[int] = None,
+    job_id: str = "ask_agent",
+    triggered_by: str = "manual",
 ) -> Iterator[Dict[str, Any]]:
     """Stream Ask Agent progress for the floating chat (status + token events).
 
@@ -234,7 +387,7 @@ def run_ad_hoc_query_stream(
     mode keeps ``agent_node`` on ``invoke``; token events come from message
     chunks when available, otherwise the final agent update is chunked for UI.
     """
-    session = AgentSessionManager(triggered_by="manual", job_id="ask_agent")
+    session = AgentSessionManager(triggered_by=triggered_by, job_id=job_id)
     session.start_or_resume(session_id)
 
     max_turns = int(config.ASK_AGENT_HISTORY_TURNS)
@@ -256,7 +409,7 @@ def run_ad_hoc_query_stream(
     state = {
         "messages": prior + [HumanMessage(content=question)],
         "session_id": session.session_id,
-        "triggered_by": "manual",
+        "triggered_by": triggered_by,
         "extra_context": "",
     }
 

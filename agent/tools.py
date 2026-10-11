@@ -16,9 +16,10 @@ except ImportError:  # pragma: no cover
     from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
 from db.repository import (
-    get_session, get_open_holdings, get_holding_by_ticker,
+    get_session, get_open_holdings, get_all_holdings, get_holding_by_ticker,
     create_recommendation, get_recommendation_history as db_get_rec_history,
-    get_recent_transactions, find_similar_recommendation, upsert_price,
+    get_recent_transactions, list_transactions, find_similar_recommendation,
+    upsert_price,
 )
 from adapters.base import registry as adapter_registry
 from adapters.news import news_adapter
@@ -149,6 +150,64 @@ def _get_portfolio_inner() -> list:
         return values
     finally:
         session.close()
+
+
+@tool
+def get_return_summary() -> dict:
+    """获取组合总收益（人民币），含已清仓已实现盈亏和未平仓浮动。
+
+    总收益以本工具为准。get_portfolio 的 pnl_pct 是券商残馀成本浮动，
+    分批卖出后会把已实现利润摊进成本，且清仓后不再出现。
+
+    Returns:
+        dict: market_value_cny, invested_cny, realized_pnl_cny, unrealized_pnl_cny,
+        total_pnl_cny, total_pnl_pct, positions（每仓已实现/浮动/合计）
+    """
+    return _safe_invoke(_get_return_summary_inner)
+
+
+def _get_return_summary_inner() -> dict:
+    from app.fx import get_cny_rates
+    from app.components.portfolio_valuation import calculate_portfolio_totals
+
+    session = get_session()
+    try:
+        holdings = get_all_holdings(session)
+        transactions = list_transactions(session)
+        markets = tuple(sorted({h.market.upper() for h in holdings}))
+        cny_rates = get_cny_rates(markets)
+        open_holdings = [h for h in holdings if (h.status or "open") != "closed" and h.shares]
+
+        def _fetch_price(holding):
+            try:
+                adapter = adapter_registry.get(holding.market)
+                price_data = adapter.get_price(holding.ticker)
+                if not isinstance(price_data, dict) or price_data.get("error"):
+                    return holding.cost_basis
+                return price_data.get("price", 0) or holding.cost_basis
+            except Exception:
+                return holding.cost_basis
+
+        fetched = _map_parallel(open_holdings, _fetch_price)
+        prices = {
+            (holding.market, holding.ticker): price
+            for holding, price in zip(open_holdings, fetched)
+        }
+        totals = calculate_portfolio_totals(holdings, prices, cny_rates, transactions)
+    finally:
+        session.close()
+
+    if totals is None:
+        return {"error": "无法获取汇率，无法计算人民币总收益"}
+    return {
+        "market_value_cny": round(totals["market_value"], 2),
+        "invested_cny": round(totals["cost"], 2),
+        "realized_pnl_cny": round(totals["realized_pnl"], 2),
+        "unrealized_pnl_cny": round(totals["unrealized_pnl"], 2),
+        "total_pnl_cny": round(totals["pnl"], 2),
+        "total_pnl_pct": round(totals["pnl_pct"], 2),
+        "positions": totals["positions"],
+    }
 
 
 @tool
@@ -804,6 +863,7 @@ def save_recommendation(
 
 ALL_TOOLS = [
     get_portfolio,
+    get_return_summary,
     get_holding,
     get_price,
     get_kline,

@@ -7,9 +7,12 @@ import streamlit as st
 
 from app.i18n import enum_label, t
 from app.timeutil import format_display_time
+from config import config
+from scheduler.cron_text import describe_cron
 from db.repository import (
     get_agent_session_detail,
     get_session,
+    latest_job_summary,
     list_analysis_runs,
     list_job_runs,
 )
@@ -18,6 +21,7 @@ from scheduler.cron import (
     get_manual_run_status,
     get_news_crontab,
     get_scheduler_status,
+    job_cron,
     trigger_job,
     update_news_crontab,
 )
@@ -31,8 +35,8 @@ JOB_IDS = (
     "monthly_trade_review",
 )
 
-# Job | ID | Next Run | Run Now
-_SCHEDULE_COLS = [3, 2, 3, 1.5]
+# Job | Schedule | Next Run | Run Now
+_SCHEDULE_COLS = [2.4, 3.4, 2.2, 1.6]
 
 
 def _fmt_time(dt):
@@ -88,6 +92,36 @@ def _render_trigger_cell(job_id: str) -> None:
                 st.error(t("jobs.trigger.unknown", job_id=job_id))
 
 
+def _schedule_locale() -> str:
+    return st.session_state.get("locale", "en")
+
+
+def _schedule_row(job_id: str, next_run, crontab: str = "", timezone: str = "") -> dict:
+    if not crontab:
+        crontab, timezone = job_cron(job_id)
+    return {
+        "job": _job_label(job_id, ""),
+        "id": job_id,
+        "schedule": describe_cron(crontab, _schedule_locale(), timezone or config.APP_TIMEZONE),
+        "crontab": crontab or "—",
+        "next_run": format_display_time(next_run) if next_run else "—",
+    }
+
+
+def render_monthly_summary():
+    """Show the latest monthly summary above the schedule table."""
+    st.subheader(t("jobs.monthly.title"))
+    session = get_session()
+    try:
+        summary = latest_job_summary(session, "monthly_trade_review")
+    finally:
+        session.close()
+    if summary:
+        st.markdown(summary)
+    else:
+        st.caption(t("jobs.monthly.empty"))
+
+
 def render_job_schedule_table():
     """Show registered APScheduler jobs with Run Now in the last column."""
     st.subheader(t("jobs.schedule.title"))
@@ -95,30 +129,29 @@ def render_job_schedule_table():
 
     if jobs:
         rows = [
-            {
-                "job": _job_label(j.get("id"), ""),
-                "id": j.get("id", "—"),
-                "next_run": j.get("next_run", "—"),
-            }
+            _schedule_row(
+                j.get("id") or "",
+                j.get("next_run"),
+                j.get("crontab") or "",
+                j.get("timezone") or "",
+            )
             for j in jobs
         ]
     else:
         st.caption(t("jobs.schedule.offline"))
-        rows = [
-            {"job": enum_label("job", job_id), "id": job_id, "next_run": "—"}
-            for job_id in JOB_IDS
-        ]
+        rows = [_schedule_row(job_id, None) for job_id in JOB_IDS]
 
     header = st.columns(_SCHEDULE_COLS)
     header[0].markdown(f"**{t('col.job')}**")
-    header[1].markdown(f"**{t('col.id')}**")
+    header[1].markdown(f"**{t('col.schedule')}**")
     header[2].markdown(f"**{t('col.next_run')}**")
     header[3].markdown(f"**{t('col.trigger')}**")
 
     for row in rows:
         cols = st.columns(_SCHEDULE_COLS)
         cols[0].write(row["job"])
-        cols[1].write(row["id"])
+        cols[1].write(row["schedule"])
+        cols[1].caption(row["crontab"])
         cols[2].write(row["next_run"])
         with cols[3]:
             _render_trigger_cell(row["id"])
@@ -126,24 +159,47 @@ def render_job_schedule_table():
     _render_news_crontab_editor()
 
 
+def _on_save_news_crontab():
+    """Persist the news crontab from the button callback.
+
+    Streamlit forbids writing a widget key after that widget is created in the
+    same run. Callbacks run first, so the cleaned expression can replace the
+    input value before the editor is drawn again.
+    """
+    expr = st.session_state.get("news_crontab_expr", "")
+    try:
+        cleaned = update_news_crontab(expr)
+    except ValueError as exc:
+        st.session_state["_news_crontab_notice"] = ("invalid", str(exc))
+        return
+    st.session_state["news_crontab_expr"] = cleaned
+    st.session_state["_news_crontab_notice"] = ("saved", cleaned)
+
+
 def _render_news_crontab_editor():
     """Allow editing the news poll 5-field crontab (persisted + live reschedule)."""
     st.markdown(f"**{t('jobs.news_cron.title')}**")
     st.caption(t("jobs.news_cron.help"))
-    current = get_news_crontab()
-    with st.form("news_crontab_form", clear_on_submit=False):
-        expr = st.text_input(
-            t("jobs.news_cron.label"),
-            value=current,
-        )
-        submitted = st.form_submit_button(t("jobs.news_cron.save"), type="primary")
-        if submitted:
-            try:
-                cleaned = update_news_crontab(expr)
-                st.success(t("jobs.news_cron.saved", expr=cleaned))
-                st.rerun()
-            except ValueError as e:
-                st.error(t("jobs.news_cron.invalid", error=str(e)))
+    if "news_crontab_expr" not in st.session_state:
+        st.session_state["news_crontab_expr"] = get_news_crontab()
+    expr = st.text_input(
+        t("jobs.news_cron.label"),
+        key="news_crontab_expr",
+    )
+    st.caption(describe_cron(expr, _schedule_locale(), config.APP_TIMEZONE))
+    st.button(
+        t("jobs.news_cron.save"),
+        type="primary",
+        on_click=_on_save_news_crontab,
+    )
+    notice = st.session_state.pop("_news_crontab_notice", None)
+    if not notice:
+        return
+    kind, payload = notice
+    if kind == "saved":
+        st.success(t("jobs.news_cron.saved", expr=payload))
+    else:
+        st.error(t("jobs.news_cron.invalid", error=payload))
 
 
 def render_job_run_table(limit: int = 50):
@@ -185,7 +241,7 @@ def render_agent_session_detail(limit: int = 50):
     """Browse agent sessions with summary, saved recommendations, and tool calls."""
     st.subheader(t("jobs.detail.title"))
 
-    filter_options = [""] + list(JOB_IDS) + ["ask_agent"]
+    filter_options = [""] + list(JOB_IDS) + ["ask_agent", "exit_analysis", "a2a"]
     job_filter = st.selectbox(
         t("jobs.detail.filter_job"),
         options=filter_options,
@@ -293,6 +349,8 @@ def render_agent_session_detail(limit: int = 50):
 
 def render_analysis_section():
     """Scheduled jobs, runtime outcomes, and agent session detail."""
+    render_monthly_summary()
+    st.divider()
     render_job_schedule_table()
     st.divider()
     render_job_run_table()

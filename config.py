@@ -72,6 +72,14 @@ class Config:
     AUTH_PASSWORD: str = os.environ.get("AUTH_PASSWORD", "")
     AUTH_MAX_FAILURES: int = int(os.environ.get("AUTH_MAX_FAILURES", "3"))
 
+    # A2A server (optional). Off unless A2A_ENABLED=true and A2A_TOKEN is set.
+    A2A_ENABLED: bool = os.environ.get("A2A_ENABLED", "false").lower() in (
+        "1", "true", "yes", "on",
+    )
+    A2A_PORT: int = int(os.environ.get("A2A_PORT", "8502"))
+    A2A_TOKEN: str = os.environ.get("A2A_TOKEN", "")
+    A2A_PUBLIC_URL: str = os.environ.get("A2A_PUBLIC_URL", "")
+
     # News API
     WALLSTREETCN_BASE_URL: str = "https://api-one-wscn.awtmt.com/apiv1"
 

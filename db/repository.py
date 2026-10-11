@@ -34,6 +34,16 @@ def create_holding(session: Session, ticker: str, market: str, shares: float,
         name=name, status="open",
     )
     session.add(holding)
+    session.flush()
+    if shares and shares > 0 and cost_basis and cost_basis > 0:
+        session.add(Transaction(
+            holding_id=holding.id,
+            action="buy",
+            shares=shares,
+            price=cost_basis,
+            notes="opening",
+            date=holding.created_at or datetime.now(timezone.utc),
+        ))
     session.commit()
     return holding
 
@@ -86,6 +96,11 @@ def create_transaction(session: Session, holding_id: int, action: str,
     return txn
 
 
+def list_transactions(session: Session) -> list[Transaction]:
+    """Every trade, oldest first, so ledgers can be replayed in order."""
+    return session.query(Transaction).order_by(Transaction.date, Transaction.id).all()
+
+
 def get_transactions_for_holding(session: Session, holding_id: int) -> list[Transaction]:
     return session.query(Transaction).filter(
         Transaction.holding_id == holding_id
@@ -134,6 +149,7 @@ def apply_trade(
     if not holding:
         raise ValueError(f"Holding not found: {holding_id}")
 
+    closed_exit = False
     if action == "buy":
         old_shares = float(holding.shares or 0)
         if holding.status == "closed" or old_shares <= 0:
@@ -159,6 +175,7 @@ def apply_trade(
             remaining = 0.0
             holding.shares = 0.0
             holding.status = "closed"
+            closed_exit = True
         else:
             # Broker-style: subtract sale proceeds from total cost, then re-average.
             remaining_total = old_shares * old_cost - shares * price
@@ -178,7 +195,16 @@ def apply_trade(
         txn.date = trade_date
     session.add(txn)
     session.commit()
+    if closed_exit:
+        _schedule_exit_analysis(holding.id, txn.id)
     return txn
+
+
+def _schedule_exit_analysis(holding_id: int, txn_id: int) -> None:
+    """Start a background exit review. Failures must not undo the trade."""
+    from agent.exit_review import schedule_exit_analysis
+
+    schedule_exit_analysis(holding_id, txn_id)
 
 
 # ── Price Cache ───────────────────────────────────────────
@@ -317,6 +343,21 @@ def end_agent_session(
         else:
             s.summary = summary
     session.commit()
+
+
+def latest_job_summary(session: Session, job_id: str) -> Optional[str]:
+    """Most recent non-empty agent summary for a job, if one exists."""
+    row = (
+        session.query(AgentSession)
+        .filter(
+            AgentSession.job_id == job_id,
+            AgentSession.summary.isnot(None),
+            AgentSession.summary != "",
+        )
+        .order_by(desc(AgentSession.started_at))
+        .first()
+    )
+    return row.summary if row else None
 
 
 def list_analysis_runs(

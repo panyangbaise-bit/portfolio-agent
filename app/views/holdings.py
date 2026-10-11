@@ -1,12 +1,21 @@
 """Holdings management — add, edit, delete positions."""
 
 import streamlit as st
+from app.components.portfolio_valuation import position_pnl
+from app.fx import currency_for_market
 from app.i18n import enum_label, t
 from db.repository import (
     get_session, get_all_holdings, create_holding,
     update_holding, delete_holding, create_transaction,
     get_transactions_for_holding, apply_trade,
 )
+
+def _native_amount(amount: float, market: str) -> str:
+    symbols = {"CNY": "¥", "USD": "$", "HKD": "HK$"}
+    symbol = symbols.get(currency_for_market(market), "")
+    sign = "+" if amount >= 0 else "-"
+    return f"{sign}{symbol}{abs(amount):,.2f}"
+
 
 _FLASH_KEY = "holdings_flash"
 _PANEL_KEY = "holdings_panel"
@@ -458,6 +467,12 @@ else:
                 if status == "closed":
                     label = f"{h.ticker} ({enum_label('holding_status', 'closed')})"
                 st.caption(f"**{label}**")
+                if status == "closed":
+                    leg = position_pnl(h, txns, h.cost_basis)
+                    st.caption(t(
+                        "holdings.history.realized",
+                        amount=_native_amount(leg["realized"], h.market),
+                    ))
                 for txn in txns:
                     st.text(t(
                         "holdings.history.line",
