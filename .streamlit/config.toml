@@ -11,3 +11,11 @@ gatherUsageStats = false
 # Hide Deploy + developer/settings menu (local and production).
 toolbarMode = "minimal"
 showErrorDetails = false
+
+[theme]
+base = "dark"
+primaryColor = "#5eead4"
+backgroundColor = "#080c12"
+secondaryBackgroundColor = "#101720"
+textColor = "#e8edf4"
+font = "sans serif"

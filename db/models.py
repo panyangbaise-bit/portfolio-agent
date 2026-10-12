@@ -231,3 +231,12 @@ class UserAction(Base):
 
     def __repr__(self):
         return f"<UserAction(id={self.id}, action='{self.action}')>"
+
+
+class TradingDiscipline(Base):
+    """Shared dashboard memo, persisted as a single document."""
+    __tablename__ = "trading_discipline"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

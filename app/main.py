@@ -105,7 +105,10 @@ inject_locale_toggle(st.session_state["locale"])
 # Optional password gate before any app UI (toggle via AUTH_ENABLED).
 require_auth()
 
+st.sidebar.markdown('<div class="pa-brand-mark">P<span> / </span>A</div>', unsafe_allow_html=True)
 st.sidebar.title(t("app.title"))
+st.sidebar.caption(t("app.tagline"))
+st.sidebar.divider()
 
 # Views live in app/views/ (NOT app/pages/) so Streamlit won't auto-add multipage tabs.
 page_key = st.sidebar.radio(

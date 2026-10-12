@@ -21,7 +21,7 @@ else:
         action_emoji = {"buy_add": "🟢", "reduce": "🔴", "hold": "🟡", "watch": "👀"}
         emoji = action_emoji.get(rec.action, "ℹ️")
 
-        with st.container():
+        with st.container(border=True, key=f"history_{rec.id}"):
             cols = st.columns([1, 7])
             with cols[0]:
                 st.markdown(f"### {emoji}")
@@ -38,4 +38,6 @@ else:
                 )
                 st.caption(format_display_time(rec.created_at))
                 st.write(rec.reasoning)
-            st.divider()
+                if rec.user_action and rec.user_action.notes:
+                    st.caption(t("rec.dismiss_reason"))
+                    st.write(rec.user_action.notes)

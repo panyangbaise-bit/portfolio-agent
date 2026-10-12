@@ -186,6 +186,14 @@ MIGRATIONS = [
         "v7_backfill_opening_buys",
         _backfill_opening_buys,
     ),
+    (
+        "v8_trading_discipline",
+        """CREATE TABLE IF NOT EXISTS trading_discipline (
+            id INTEGER PRIMARY KEY,
+            content TEXT NOT NULL DEFAULT '',
+            updated_at DATETIME NOT NULL
+        )""",
+    ),
 ]
 
 

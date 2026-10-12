@@ -7,7 +7,7 @@ CSS_PATH = Path(__file__).parent / "cyberpunk.css"
 
 FONT_IMPORT = (
     "@import url('https://fonts.googleapis.com/css2?"
-    "family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap');"
+    "family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Orbitron:wght@500;700&display=swap');"
 )
 
 # Hide zero-height theme iframe hosts so they never consume layout.

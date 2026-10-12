@@ -2,12 +2,12 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy import create_engine, desc
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from config import config
 from db.models import (
     Base, Holding, Transaction, PriceCache, NewsArticle, FinancialReport,
-    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction,
+    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction, TradingDiscipline,
 )
 
 
@@ -559,7 +559,7 @@ def get_pending_recommendations(session: Session) -> list[Recommendation]:
 
 def get_recommendation_history(session: Session, ticker: str = None,
                                limit: int = 50) -> list[Recommendation]:
-    q = session.query(Recommendation)
+    q = session.query(Recommendation).options(selectinload(Recommendation.user_action))
     if ticker:
         q = q.filter(Recommendation.ticker == ticker.upper())
     return q.order_by(desc(Recommendation.created_at)).limit(limit).all()
@@ -580,6 +580,11 @@ def apply_recommendation_action(session: Session, recommendation_id: int,
         return {"status": "not_found"}
     if rec.status != "pending":
         return {"status": "already_handled", "recommendation_status": rec.status}
+
+    if action == "dismiss":
+        notes = notes.strip() if isinstance(notes, str) else ""
+        if not notes:
+            return {"status": "reason_required"}
 
     user_action = UserAction(
         recommendation_id=recommendation_id,
@@ -684,3 +689,22 @@ def delete_watchlist_item(session: Session, item_id: int) -> bool:
         session.commit()
         return True
     return False
+
+
+# ── Dashboard memo ────────────────────────────────────────
+
+def get_trading_discipline(session: Session) -> Optional[TradingDiscipline]:
+    return session.get(TradingDiscipline, 1)
+
+
+def save_trading_discipline(session: Session, content: str) -> TradingDiscipline:
+    memo = get_trading_discipline(session)
+    if memo is None:
+        memo = TradingDiscipline(id=1, content=content.strip())
+        session.add(memo)
+    else:
+        memo.content = content.strip()
+        memo.updated_at = datetime.now(timezone.utc)
+    session.commit()
+    session.refresh(memo)
+    return memo

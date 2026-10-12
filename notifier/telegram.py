@@ -329,6 +329,10 @@ class TelegramCallbackPoller:
         if result["status"] == "applied":
             text = "Recommendation accepted." if action == "accept" else "Recommendation dismissed."
             self._answer_callback(callback_id, text)
+        elif result["status"] == "reason_required":
+            self._answer_callback(
+                callback_id, "Please dismiss in the dashboard and provide a reason.", show_alert=True
+            )
         elif result["status"] == "already_handled":
             self._answer_callback(callback_id, "Recommendation was already handled.")
         else:

@@ -22,9 +22,9 @@ def _color_pnl_cell(val):
     except ValueError:
         return ""
     if num > 0:
-        return "color: #00ff9c; font-weight: 600"
+        return "color: #5eead4; font-weight: 600"
     if num < 0:
-        return "color: #ff2d6a; font-weight: 600"
+        return "color: #fb7185; font-weight: 600"
     return ""
 
 
