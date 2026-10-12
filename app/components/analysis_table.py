@@ -369,13 +369,13 @@ def render_agent_session_detail(limit: int = 50):
 
 
 def render_analysis_section():
-    """Render one workspace at a time so reports never bury task controls."""
+    """Render one workspace at a time. Analysis reports open first."""
     navigation, refresh = st.columns([6, 1], vertical_alignment="bottom")
     with navigation:
         section = st.radio(
-            t("jobs.navigation"), ["schedule", "runtime", "reports"],
+            t("jobs.navigation"), ["reports", "schedule", "runtime"],
             format_func=lambda value: t("jobs.tab." + value), horizontal=True,
-            label_visibility="collapsed", key="jobs_section",
+            label_visibility="collapsed", key="jobs_section", index=0,
         )
     with refresh:
         if st.button(t("jobs.refresh"), key="jobs_refresh", width="stretch"):

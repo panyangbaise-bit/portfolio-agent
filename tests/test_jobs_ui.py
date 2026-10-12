@@ -36,11 +36,22 @@ def jobs_ui(monkeypatch):
     engine.dispose()
 
 
-def test_default_page_prioritizes_schedules_and_preserves_manual_trigger(jobs_ui, monkeypatch):
+def test_default_page_opens_analysis_reports(jobs_ui):
     app = jobs_ui
+    radio = app.radio(key="jobs_section")
+    assert list(radio.options) == ["Analysis reports", "Schedules", "Run history"]
+    assert radio.value == "reports"
+    assert app.expander[0].proto.expanded is False
+    assert [tab.label for tab in app.tabs] == ["Report", "Recommendations", "Tool Calls"]
+    assert any(item.value == "Full news report body" for item in app.markdown)
+    assert not app.dataframe
+
+
+def test_schedule_preserves_manual_trigger(jobs_ui, monkeypatch):
+    app = jobs_ui
+    app.radio(key="jobs_section").set_value("schedule").run()
     assert len([button for button in app.button if (button.key or "").startswith("trigger_")]) == 6
     assert not app.dataframe
-    assert not any("report body" in item.value for item in app.markdown)
     assert app.expander[0].proto.expanded is False
     triggered = []
     monkeypatch.setattr(analysis_table, "trigger_job", lambda jid: triggered.append(jid) or True)
@@ -82,6 +93,7 @@ def test_news_schedule_editor_still_saves_and_normalizes(jobs_ui, monkeypatch):
     saved = []
     monkeypatch.setattr(analysis_table, "update_news_crontab", lambda expr: saved.append(expr) or expr.strip())
     app = jobs_ui
+    app.radio(key="jobs_section").set_value("schedule").run()
     app.text_input(key="news_crontab_expr").set_value(" 0 9 * * mon-fri ")
     next(button for button in app.button if button.label == "Save & reschedule").click().run()
     assert not app.exception
