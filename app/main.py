@@ -34,7 +34,7 @@ NAV_ITEMS = [
     ("holdings", "app/views/holdings.py"),
     ("watchlist", "app/views/watchlist.py"),
     ("recommendations", "app/views/recommendations.py"),
-    ("jobs", "app/views/jobs.py"),
+    ("jobs", "app/views/operations.py"),
     ("history", "app/views/history.py"),
 ]
 

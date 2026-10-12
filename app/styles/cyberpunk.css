@@ -486,3 +486,32 @@ button[kind^="primary"] p, button[data-testid="baseButton-primary"] p {
 @media (max-width: 768px) {
   [data-testid="stMetric"], .cp-pnl-metric { min-height: 8rem; padding: 1rem; }
 }
+
+/* Jobs: navigation first, compact controls, long output in a reading pane. */
+.st-key-jobs_section [role="radiogroup"] {
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--cp-border);
+  padding-bottom: 0.5rem;
+}
+.st-key-jobs_section label {
+  padding: 0.55rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.st-key-jobs_section label:has(input:checked) {
+  background: rgba(94, 234, 212, 0.07);
+  border-color: rgba(94, 234, 212, 0.25);
+}
+.st-key-jobs_section label:has(input:checked) p { color: var(--cp-cyan); }
+[class*="st-key-job_schedule_"] { background: var(--cp-surface); border-radius: 8px; }
+[class*="st-key-job_schedule_"] [data-testid="stVerticalBlock"] { gap: 0.25rem; }
+.st-key-jobs_run_detail { background: var(--cp-surface); border-radius: 8px; }
+.st-key-jobs_workspace [data-testid="stMarkdownContainer"] table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+@media (max-width: 768px) {
+  .st-key-jobs_section [role="radiogroup"] { gap: 0.15rem; }
+  .st-key-jobs_section label { padding: 0.4rem 0.45rem; }
+}

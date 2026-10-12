@@ -472,11 +472,15 @@ def finish_job_run(session: Session, run_id: int, status: str,
         session.commit()
 
 
-def list_job_runs(session: Session, limit: int = 50) -> list[JobRun]:
-    """Return the most recent scheduler outcomes for dashboard diagnostics."""
-    return session.query(JobRun).order_by(
-        desc(JobRun.started_at)
-    ).limit(limit).all()
+def list_job_runs(session: Session, limit: int = 50,
+                  job_id: Optional[str] = None, status: Optional[str] = None) -> list[JobRun]:
+    """Filter before limiting so older failures remain discoverable."""
+    query = session.query(JobRun)
+    if job_id:
+        query = query.filter(JobRun.job_id == job_id)
+    if status:
+        query = query.filter(JobRun.status == status)
+    return query.order_by(desc(JobRun.started_at), desc(JobRun.id)).limit(limit).all()
 
 
 def log_tool_call(session: Session, session_id: int, tool_name: str,

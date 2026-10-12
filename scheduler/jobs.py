@@ -32,6 +32,7 @@ def _finish_job_run(run_id: int, status: str, details: str = None):
     session = get_session()
     try:
         finish_job_run(session, run_id, status, details)
+        return {"status": status, "details": details}
     finally:
         session.close()
 
@@ -40,51 +41,48 @@ def job_after_market_us():
     run_id = _start_job_run("us_after_market", "美股盘后分析")
     if not is_trading_day("US"):
         logger.info("US market closed (weekend), skipping analysis.")
-        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
-        return
+        return _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
     logger.info("Starting US after-market analysis...")
     try:
         result = run_after_market_analysis("US")
         logger.info(f"US analysis done: {result[:100]}...")
         notify(f"🇺🇸 美股盘后分析\n\n{result}")
-        _finish_job_run(run_id, "completed", result[:500])
+        return _finish_job_run(run_id, "completed", result)
     except Exception as e:
         logger.error(f"US analysis failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))
 
 
 def job_after_market_cn():
     run_id = _start_job_run("cn_after_market", "A股盘后分析")
     if not is_trading_day("CN"):
         logger.info("CN market closed (weekend), skipping analysis.")
-        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
-        return
+        return _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
     logger.info("Starting CN after-market analysis...")
     try:
         result = run_after_market_analysis("CN")
         logger.info(f"CN analysis done: {result[:100]}...")
         notify(f"🇨🇳 A股盘后分析\n\n{result}")
-        _finish_job_run(run_id, "completed", result[:500])
+        return _finish_job_run(run_id, "completed", result)
     except Exception as e:
         logger.error(f"CN analysis failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))
 
 
 def job_after_market_hk():
     run_id = _start_job_run("hk_after_market", "港股盘后分析")
     if not is_trading_day("HK"):
         logger.info("HK market closed (weekend), skipping analysis.")
-        _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
-        return
+        return _finish_job_run(run_id, "skipped", "Non-trading day (weekend).")
     logger.info("Starting HK after-market analysis...")
     try:
         result = run_after_market_analysis("HK")
         logger.info(f"HK analysis done: {result[:100]}...")
         notify(f"🇭🇰 港股盘后分析\n\n{result}")
-        _finish_job_run(run_id, "completed", result[:500])
+        return _finish_job_run(run_id, "completed", result)
     except Exception as e:
         logger.error(f"HK analysis failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))
 
 
 def job_after_market_crypto():
@@ -95,10 +93,10 @@ def job_after_market_crypto():
         result = run_after_market_analysis("CRYPTO")
         logger.info(f"Crypto analysis done: {result[:100]}...")
         notify(f"🪙 Crypto每日分析\n\n{result}")
-        _finish_job_run(run_id, "completed", result[:500])
+        return _finish_job_run(run_id, "completed", result)
     except Exception as e:
         logger.error(f"Crypto analysis failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))
 
 
 def job_hourly_news_poll():
@@ -113,8 +111,7 @@ def job_hourly_news_poll():
 
     if not tickers:
         logger.info("No holdings, skipping news poll.")
-        _finish_job_run(run_id, "skipped", "No holdings to monitor.")
-        return
+        return _finish_job_run(run_id, "skipped", "No holdings to monitor.")
 
     try:
         news_items = poll_news_for_portfolio(tickers)
@@ -130,19 +127,19 @@ def job_hourly_news_poll():
             result = run_news_triggered_analysis(news_items)
             if result:
                 notify(f"📰 新闻事件分析\n\n{result}")
-                _finish_job_run(run_id, "completed", result[:500])
+                return _finish_job_run(run_id, "completed", result)
             else:
                 logger.info("No significant news impact detected.")
-                _finish_job_run(run_id, "skipped", "No significant news impact.")
+                return _finish_job_run(run_id, "skipped", "No significant news impact.")
         else:
-            _finish_job_run(
+            return _finish_job_run(
                 run_id,
                 "skipped",
                 "No ticker news or headlines found.",
             )
     except Exception as e:
         logger.error(f"News poll failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))
 
 
 def job_monthly_trade_review():
@@ -153,10 +150,10 @@ def job_monthly_trade_review():
         if result:
             logger.info(f"Monthly summary done: {result[:100]}...")
             notify(f"📒 月度总结\n\n{result}")
-            _finish_job_run(run_id, "completed", result[:500])
+            return _finish_job_run(run_id, "completed", result)
         else:
             logger.info("No holdings or trades; skipping monthly summary.")
-            _finish_job_run(run_id, "skipped", "No holdings or trades to summarize.")
+            return _finish_job_run(run_id, "skipped", "No holdings or trades to summarize.")
     except Exception as e:
         logger.error(f"Monthly summary failed: {e}")
-        _finish_job_run(run_id, "failed", str(e))
+        return _finish_job_run(run_id, "failed", str(e))

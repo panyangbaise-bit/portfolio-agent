@@ -48,6 +48,7 @@ JOB_FUNCTIONS: dict[str, Callable] = {
 
 # Track manual trigger runs for the dashboard to poll.
 _manual_runs: dict[str, dict] = {}
+_manual_runs_lock = threading.Lock()
 
 NEWS_JOB_ID = "hourly_news"
 NEWS_JOB_NAME = "新闻轮询"
@@ -186,45 +187,61 @@ def update_news_crontab(expr: str) -> str:
 
 
 def trigger_job(job_id: str) -> bool:
-    """Manually trigger a job by its ID. Runs in a background thread.
+    """Start one manual run, or acknowledge the existing run of this job.
 
-    Returns True if the job was found and started, False if unknown job_id.
+    True means the request is handled. Repeated clicks from another browser
+    cannot start a second manual run while the first is still running.
     """
     func = JOB_FUNCTIONS.get(job_id)
     if not func:
-        logger.warning(f"Unknown job_id for manual trigger: {job_id}")
+        logger.warning("Unknown job_id for manual trigger: %s", job_id)
         return False
 
-    _manual_runs[job_id] = {"status": "running", "started_at": None, "error": None}
+    with _manual_runs_lock:
+        if _manual_runs.get(job_id, {}).get("status") == "running":
+            return True
+        state = {"status": "running", "started_at": None, "error": None}
+        _manual_runs[job_id] = state
 
     def _wrapper():
         from datetime import datetime, timezone
-
         from app.timeutil import format_display_time
 
-        _manual_runs[job_id]["started_at"] = format_display_time(
-            datetime.now(timezone.utc),
-            fmt="%Y-%m-%d %H:%M:%S",
-        )
+        with _manual_runs_lock:
+            state["started_at"] = format_display_time(
+                datetime.now(timezone.utc), fmt="%Y-%m-%d %H:%M:%S",
+            )
         try:
-            func()
-            _manual_runs[job_id]["status"] = "completed"
-        except Exception as e:
-            logger.error(f"Manual trigger {job_id} failed: {e}")
-            _manual_runs[job_id]["status"] = "failed"
-            _manual_runs[job_id]["error"] = str(e)
+            outcome = func()
+            status = outcome.get("status", "completed") if isinstance(outcome, dict) else "completed"
+            with _manual_runs_lock:
+                state["status"] = status
+                if status == "failed":
+                    state["error"] = outcome.get("details") or "Unknown error"
+        except Exception as exc:
+            logger.exception("Manual trigger %s failed", job_id)
+            with _manual_runs_lock:
+                state.update(status="failed", error=str(exc))
 
     thread = threading.Thread(target=_wrapper, daemon=True, name=f"manual-{job_id}")
-    thread.start()
-    logger.info(f"Manual trigger started for job: {job_id}")
+    try:
+        thread.start()
+    except Exception as exc:
+        with _manual_runs_lock:
+            state.update(status="failed", error=str(exc))
+        logger.exception("Could not start manual job %s", job_id)
     return True
 
 
 def get_manual_run_status(job_id: str) -> Optional[dict]:
-    """Return the status of a manually triggered run, or None if never triggered."""
-    return _manual_runs.get(job_id)
+    """Return a snapshot so rendering cannot observe a partially updated state."""
+    with _manual_runs_lock:
+        state = _manual_runs.get(job_id)
+        return dict(state) if state else None
 
 
 def clear_manual_run_status(job_id: str):
-    """Clear the manual run status so the button resets."""
-    _manual_runs.pop(job_id, None)
+    """Dismiss a finished status; an active run remains protected."""
+    with _manual_runs_lock:
+        if _manual_runs.get(job_id, {}).get("status") != "running":
+            _manual_runs.pop(job_id, None)

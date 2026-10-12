@@ -29,7 +29,7 @@ def _run_guarded(holding_id: int, txn_id: int) -> None:
             notify(f"📤 清仓分析\n\n{text}")
         except Exception as exc:
             logger.warning("Exit analysis notify failed: %s", exc)
-        _finish_job_run(run_id, "completed", (text or "")[:500])
+        _finish_job_run(run_id, "completed", (text or ""))
     except Exception as exc:
         logger.error("Exit analysis failed: %s", exc)
         _finish_job_run(run_id, "failed", str(exc))

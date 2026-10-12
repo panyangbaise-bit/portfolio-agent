@@ -1,4 +1,4 @@
-"""Persisted scheduler settings (editable from the Jobs page)."""
+"""Persisted scheduler settings (editable from Operations)."""
 
 import json
 import logging

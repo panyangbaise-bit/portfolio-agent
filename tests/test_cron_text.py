@@ -40,3 +40,9 @@ def test_unsupported_expr_falls_back_to_raw():
     assert describe_cron("0 8-22/2 * * 1", "zh", "Asia/Shanghai") == (
         "0 8-22/2 * * 1（Asia/Shanghai）"
     )
+
+
+def test_weekday_news_schedule_is_readable():
+    assert describe_cron("0 8-22/4 * * mon-fri", "zh") == "周一至周五 08:00–22:00 每 4 小时整点"
+    assert describe_cron("0 8-22/4 * * mon-fri", "en") == "Monday–Friday from 08:00–22:00, every 4 hours on the hour"
+    assert describe_cron("0 7 * * 0-4", "en") == "Monday–Friday at 07:00"

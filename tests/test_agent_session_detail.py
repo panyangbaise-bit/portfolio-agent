@@ -82,6 +82,12 @@ def test_tool_call_expanders_are_collapsed_by_default(monkeypatch):
     expanded_states = []
 
     class FakeStreamlit:
+        def columns(self, *args, **kwargs):
+            return [self, self]
+
+        def tabs(self, labels):
+            return [nullcontext() for _ in labels]
+
         def subheader(self, *args, **kwargs):
             return None
 

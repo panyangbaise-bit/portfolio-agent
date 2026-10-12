@@ -40,11 +40,11 @@ Pending agent suggestions with confidence, urgency, and reasoning. **Accept** or
 
 ![Recommendations](docs/screenshots/recommendations.png)
 
-### Jobs
+### Operations
 
-Six scheduled jobs (news poll, crypto daily, US/CN/HK after-market, monthly trade review). **Run Now** on any row, edit the news crontab, then inspect **Job Runtime Log** and agent session detail (summary, tool calls, saved recs). Times use `APP_TIMEZONE` (default Beijing).
+Three focused views: **Schedules** for the six recurring analyses and manual runs; **Run history** to filter outcomes and select a row to read its saved output; **Analysis reports** for full reports, recommendations, and tool calls. Monthly summaries and news schedule settings stay collapsed until needed. Times use `APP_TIMEZONE` (default Beijing).
 
-![Jobs](docs/screenshots/jobs.png)
+![Operations](docs/screenshots/operations.jpg)
 
 ### History
 
@@ -63,7 +63,7 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 - **Multi-market book** — US, CN (stocks + OTC funds/ETFs), HK, crypto; core vs satellite
 - **CNY portfolio totals** — FX-normalized market value and weights (native $ / HK$ / ¥ kept on cost and last price)
 - **DeepSeek thinking agent** — `deepseek-v4-pro`, thinking mode, `reasoning_effort=max`, LangGraph tool loop
-- **Ask Agent** — floating multi-turn chat, streaming replies, Jobs history row per thread
+- **Ask Agent** — floating multi-turn chat, streaming replies, analysis report per conversation in Operations
 - **Live prices with fallbacks** — cache first, background refresh; adapters degrade instead of taking the job down
 - **Scheduled analysis** — after-market by venue, news poll (holdings + headlines), monthly trade review
 - **Decision log** — sessions, tool calls, recommendations, and user actions in SQLite
@@ -79,7 +79,7 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 | **Holdings** | Add / edit / trade / transaction history |
 | **Watchlist** | Pre-entry tickers, reason, target range |
 | **Recommendations** | Accept or dismiss pending suggestions |
-| **Jobs** | Schedule, Run Now, crontab, runtime log, session detail |
+| **Operations** | Schedule, Run Now, crontab, runtime log, session detail |
 | **History** | Past recommendations and outcomes |
 
 ## Deploy on Ubuntu
@@ -121,7 +121,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 
 6. **Review suggestions** — **Recommendations** to Accept / Dismiss. Full trail under **History**.
 
-7. **Run analysis** — **Jobs** shows next run times. **Run Now** or wait for cron. Results land in the runtime log, session detail, and Telegram when configured.
+7. **Run analysis** — **Operations** shows next run times. **Run Now** or wait for cron. Results land in the runtime log, session detail, and Telegram when configured.
 
 ## Configuration
 
@@ -134,7 +134,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 | `DEEPSEEK_REASONING_EFFORT` | No | `max` |
 | `DEEPSEEK_THINKING` | No | `true` |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` |
-| `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable on Jobs) |
+| `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable in Operations) |
 | `AUTH_ENABLED` | No | `false` |
 | `AUTH_PASSWORD` | If auth on | — |
 | `AUTH_MAX_FAILURES` | No | `3` |

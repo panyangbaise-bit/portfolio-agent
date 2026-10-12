@@ -1,4 +1,4 @@
-"""Jobs — scheduled jobs, manual triggers, and runtime log."""
+"""Operations — schedules, run history, and analysis reports."""
 
 import streamlit as st
 
@@ -7,4 +7,5 @@ from app.i18n import t
 
 st.title(t("jobs.page.title"))
 st.caption(t("jobs.page.caption"))
-render_analysis_section()
+with st.container(key="jobs_workspace"):
+    render_analysis_section()

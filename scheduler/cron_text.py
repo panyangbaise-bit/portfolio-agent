@@ -9,7 +9,17 @@ def describe_cron(expr: str, locale: str = "en", timezone: str = "") -> str:
     Unsupported patterns fall back to the raw expression. The timezone, when
     given, is always appended so the clock is unambiguous.
     """
-    text = _describe_fields(expr, locale)
+    fields = (expr or "").split()
+    if len(fields) == 5 and fields[4].lower() in ("mon-fri", "0-4") and fields[2:4] == ["*", "*"]:
+        # APScheduler uses Monday=0; retain its weekday semantics.
+        text = _describe_fields(" ".join(fields[:4] + ["*"]), locale)
+        if text:
+            text = text.replace("每天", "周一至周五", 1) if locale == "zh" else text.replace("Every day", "Monday–Friday", 1)
+            # Hour-step schedules have no daily prefix to replace.
+            if "周一至周五" not in text and "Monday–Friday" not in text:
+                text = ("周一至周五，" if locale == "zh" else "Monday–Friday, ") + text
+    else:
+        text = _describe_fields(expr, locale)
     if not text:
         text = (expr or "").strip() or "—"
     if timezone:
