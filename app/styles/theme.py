@@ -129,10 +129,10 @@ def inject_cyberpunk_theme():
   }
   el.textContent = css;
   function decorateNavIcons() {
-    const names = ["dashboard", "holdings", "watchlist", "recommendations", "operations", "history"];
+    const names = ["dashboard", "holdings", "watchlist", "recommendations", "operations", "history", "memory"];
     const group = doc.querySelector('[data-testid="stSidebar"] [role="radiogroup"]');
     if (!group) return false;
-    const labels = group.querySelectorAll(":scope > label");
+    const labels = group.querySelectorAll("label");
     if (!labels.length) return false;
     labels.forEach(function (label, i) {
       if (!names[i] || label.querySelector(".pa-icon")) return;
@@ -142,22 +142,31 @@ def inject_cyberpunk_theme():
       const nodes = label.querySelectorAll("div, p");
       let host = null;
       for (let n = nodes.length - 1; n >= 0; n--) {
-        const el = nodes[n];
-        if (el.querySelector("input")) continue;
-        if ((el.textContent || "").trim()) host = el;
-        if (host) break;
+        const node = nodes[n];
+        if (node.querySelector("input")) continue;
+        if ((node.textContent || "").trim()) {
+          host = node;
+          break;
+        }
       }
       (host || label).prepend(icon);
     });
-    return true;
+    return labels.length > 0 && !!group.querySelector(".pa-icon");
   }
-  if (!decorateNavIcons()) {
-    let tries = 0;
-    const timer = setInterval(function () {
-      tries += 1;
-      if (decorateNavIcons() || tries > 20) clearInterval(timer);
-    }, 100);
+  // Streamlit replaces the sidebar on every rerun, and this iframe often
+  // runs before the radio exists. A one-shot timer misses both cases.
+  if (!window.__paNavIconObs) {
+    let scheduled = null;
+    window.__paNavIconObs = new MutationObserver(function () {
+      if (scheduled) return;
+      scheduled = setTimeout(function () {
+        scheduled = null;
+        decorateNavIcons();
+      }, 50);
+    });
+    window.__paNavIconObs.observe(doc.body, { childList: true, subtree: true });
   }
+  decorateNavIcons();
 """
         + _hide_iframe_host_js()
         + """
