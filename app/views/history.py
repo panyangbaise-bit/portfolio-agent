@@ -2,6 +2,7 @@
 
 import streamlit as st
 from app.i18n import enum_label, t
+from app.icons import icon
 from app.timeutil import format_display_time
 from db.repository import get_session, get_recommendation_history
 
@@ -18,13 +19,21 @@ if not all_recs:
     st.info(t("history.empty"))
 else:
     for rec in all_recs:
-        action_emoji = {"buy_add": "🟢", "reduce": "🔴", "hold": "🟡", "watch": "👀"}
-        emoji = action_emoji.get(rec.action, "ℹ️")
+        action_mark = {
+            "buy_add": ("up", "pa-tone-gain"),
+            "reduce": ("down", "pa-tone-loss"),
+            "hold": ("hold", "pa-tone-flat"),
+            "watch": ("watchlist", "pa-tone-watch"),
+        }
+        mark_name, mark_tone = action_mark.get(rec.action, ("note", "pa-tone-flat"))
 
         with st.container(border=True, key=f"history_{rec.id}"):
             cols = st.columns([1, 7])
             with cols[0]:
-                st.markdown(f"### {emoji}")
+                st.markdown(
+                    f'<div class="pa-action-mark {mark_tone}">{icon(mark_name)}</div>',
+                    unsafe_allow_html=True,
+                )
             with cols[1]:
                 st.markdown(
                     t(

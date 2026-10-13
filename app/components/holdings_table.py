@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from app.i18n import t
+from app.icons import heading
 from db.repository import get_session, get_open_holdings
 from app.components.currency import fetch_cny_rates
 from app.components.price_fetcher import fetch_prices_batch, resolve_display_price
@@ -105,16 +106,16 @@ def render_holdings_table(holdings=None, prices=None, cny_rates=None):
 
     df = pd.DataFrame(rows)
 
-    core = df[df[t("col.type")].str.contains("🔵")]
-    satellite = df[df[t("col.type")].str.contains("🟠")]
+    core = df[df[t("col.type")] == t("position_type.core_badge")]
+    satellite = df[df[t("col.type")] == t("position_type.satellite_badge")]
 
-    st.subheader(t("holdings_table.core"))
+    heading(t("holdings_table.core"), "core")
     if not core.empty:
         st.dataframe(_styled_holdings(core), width="stretch", hide_index=True)
     else:
         st.caption(t("holdings_table.core_empty"))
 
-    st.subheader(t("holdings_table.satellite"))
+    heading(t("holdings_table.satellite"), "satellite")
     if not satellite.empty:
         st.dataframe(_styled_holdings(satellite), width="stretch", hide_index=True)
     else:

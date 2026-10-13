@@ -140,7 +140,7 @@ def render_ask_agent_chat() -> None:
     )
 
     if not open_panel:
-        if st.button("✦", key="ask_agent_fab", help=t("ask_agent.open"), type="primary"):
+        if st.button("Ask", key="ask_agent_fab", help=t("ask_agent.open"), type="primary"):
             st.session_state["ask_agent_open"] = True
             st.rerun()
         if pending:
@@ -161,11 +161,11 @@ def render_ask_agent_chat() -> None:
     with hdr_l:
         st.markdown(f"**{t('ask_agent.title')}**")
     with hdr_mid:
-        if st.button("＋", key="ask_agent_new", help=t("ask_agent.new_chat"), disabled=busy):
+        if st.button("New", key="ask_agent_new", help=t("ask_agent.new_chat"), disabled=busy):
             _clear_thread()
             st.rerun()
     with hdr_r:
-        if st.button("✕", key="ask_agent_close", help=t("ask_agent.close")):
+        if st.button("Close", key="ask_agent_close", help=t("ask_agent.close")):
             st.session_state["ask_agent_open"] = False
             st.rerun()
 

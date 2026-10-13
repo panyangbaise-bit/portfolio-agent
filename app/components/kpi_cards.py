@@ -2,6 +2,7 @@ import html
 
 import streamlit as st
 from app.i18n import t
+from app.icons import icon
 from db.repository import (
     get_all_holdings,
     get_open_holdings,
@@ -110,10 +111,31 @@ def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
     if totals is None:
         st.warning(t("kpi.fx_unavailable"))
     with cols[2]:
-        st.metric(t("kpi.pending_recs"), str(len(pending)) + (" ⚠️" if len(pending) > 0 else ""))
+        pending_tone = "pa-tone-warn" if pending else "pa-tone-flat"
+        pending_icon = "warning" if pending else "check"
+        st.html(
+            '<div class="cp-pnl-metric">'
+            '<div class="label">' + html.escape(t("kpi.pending_recs")) + "</div>"
+            '<div class="value pa-kpi-value ' + pending_tone + '">'
+            + icon(pending_icon)
+            + html.escape(str(len(pending)))
+            + "</div></div>"
+        )
     with cols[3]:
         high_urgency = [r for r in pending if r.urgency == "high"]
-        risk = t("risk.high") if high_urgency else (t("risk.moderate") if pending else t("risk.low"))
-        st.metric(t("kpi.risk_level"), risk)
+        if high_urgency:
+            risk, risk_icon, risk_tone = t("risk.high"), "warning", "pa-tone-loss"
+        elif pending:
+            risk, risk_icon, risk_tone = t("risk.moderate"), "hold", "pa-tone-warn"
+        else:
+            risk, risk_icon, risk_tone = t("risk.low"), "safe", "pa-tone-gain"
+        st.html(
+            '<div class="cp-pnl-metric">'
+            '<div class="label">' + html.escape(t("kpi.risk_level")) + "</div>"
+            '<div class="value pa-kpi-value ' + risk_tone + '">'
+            + icon(risk_icon)
+            + html.escape(risk)
+            + "</div></div>"
+        )
 
     return holdings, prices

@@ -4,6 +4,7 @@ import streamlit as st
 from app.components.portfolio_valuation import position_pnl
 from app.fx import currency_for_market
 from app.i18n import enum_label, t
+from app.icons import heading
 from db.repository import (
     get_session, get_all_holdings, create_holding,
     update_holding, delete_holding, create_transaction,
@@ -45,10 +46,10 @@ def _show_flash() -> None:
     message = flash.get("message", "")
     if level == "success":
         st.success(message)
-        st.toast(message, icon="✅")
+        st.toast(message)
     elif level == "error":
         st.error(message)
-        st.toast(message, icon="⚠️")
+        st.toast(message)
     else:
         st.info(message)
 
@@ -118,7 +119,7 @@ panel = st.radio(
 # ── Add Position ──────────────────────────────────────────
 
 if panel == "add":
-    st.subheader(t("holdings.add.title"))
+    heading(t("holdings.add.title"), "add")
 
     with st.form("add_holding_form", clear_on_submit=False):
         col1, col2 = st.columns(2)
@@ -210,7 +211,7 @@ if panel == "add":
 # ── Edit / Delete ─────────────────────────────────────────
 
 elif panel == "edit":
-    st.subheader(t("holdings.edit.title"))
+    heading(t("holdings.edit.title"), "edit")
     st.caption(t("holdings.edit.trade_hint"))
 
     session = get_session()
@@ -339,7 +340,7 @@ elif panel == "edit":
 # ── Trade (buy / sell) ────────────────────────────────────
 
 elif panel == "trade":
-    st.subheader(t("holdings.trade.title"))
+    heading(t("holdings.trade.title"), "trade")
     st.caption(t("holdings.trade.caption"))
 
     session = get_session()
@@ -453,7 +454,7 @@ elif panel == "trade":
 # ── Transaction History ───────────────────────────────────
 
 else:
-    st.subheader(t("holdings.history.title"))
+    heading(t("holdings.history.title"), "history")
     session = get_session()
     try:
         holdings = get_all_holdings(session)

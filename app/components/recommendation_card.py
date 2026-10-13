@@ -4,6 +4,7 @@ import streamlit as st
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.i18n import enum_label, t
+from app.icons import heading
 from app.timeutil import format_display_time
 from db.repository import apply_recommendation_action, get_session, get_pending_recommendations
 
@@ -41,7 +42,7 @@ def render_recommendations():
         st.info(t("rec.empty"))
         return
 
-    st.subheader(t("rec.title"))
+    heading(t("rec.title"), "recommendations")
     for rec in recommendations:
         with st.container(border=True, key=f"recommendation_{rec.id}"):
             st.markdown(t(
@@ -58,7 +59,9 @@ def render_recommendations():
                 if st.button(t("rec.accept"), key=f"accept_{rec.id}", width="stretch"):
                     _apply_action(rec.id, "accept")
             with dismiss_col:
-                with st.popover(t("rec.dismiss"), width="stretch"):
+                with st.container(key=f"dismiss_{rec.id}"):
+                    popover = st.popover(t("rec.dismiss"), width="stretch")
+                with popover:
                     with st.form(f"dismiss_form_{rec.id}"):
                         reason = st.text_area(
                             t("rec.dismiss_reason"), key=f"dismiss_reason_{rec.id}",

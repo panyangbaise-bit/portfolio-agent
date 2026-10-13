@@ -1,7 +1,10 @@
 """Watchlist — track interested stocks before entering positions."""
 
+import html
+
 import streamlit as st
 from app.i18n import t
+from app.icons import icon
 from db.repository import (
     get_session,
     get_watchlist_items,
@@ -129,28 +132,42 @@ else:
     st.subheader(t("watchlist.table.title"))
     for item in items:
         display = f"{item.name} ({item.ticker})" if item.name else item.ticker
-        priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(item.priority, "🟡")
+        priority_name = {"high": "priority-high", "medium": "priority-medium", "low": "priority-low"}.get(
+            item.priority, "priority-medium"
+        )
         status_label = t("watchlist.status." + item.status)
         priority_label = t("watchlist.priority." + item.priority)
 
         with st.expander(
-            f"{priority_icon} **{display}** — {t('market.' + item.market)} | {priority_label} | {status_label}",
+            f"**{display}** — {t('market.' + item.market)} | {priority_label} | {status_label}",
             expanded=item.priority == "high",
         ):
-            # info row
+            st.markdown(
+                f'<p class="pa-meta">{icon(priority_name)}<span>{html.escape(priority_label)}</span></p>',
+                unsafe_allow_html=True,
+            )
             c1, c2, c3 = st.columns(3)
             with c1:
                 if item.watch_reason:
-                    st.caption(f"💡 {t('watchlist.col.reason')}: {item.watch_reason}")
+                    st.markdown(
+                        f'<p class="pa-meta">{icon("note")}<span>{html.escape(t("watchlist.col.reason"))}: {html.escape(item.watch_reason)}</span></p>',
+                        unsafe_allow_html=True,
+                    )
             with c2:
                 if item.target_price_low or item.target_price_high:
                     lo = f"{item.target_price_low:.2f}" if item.target_price_low else "—"
                     hi = f"{item.target_price_high:.2f}" if item.target_price_high else "—"
-                    st.caption(f"🎯 {t('watchlist.col.target')}: {lo} ~ {hi}")
+                    st.markdown(
+                        f'<p class="pa-meta">{icon("target")}<span>{html.escape(t("watchlist.col.target"))}: {html.escape(lo)} ~ {html.escape(hi)}</span></p>',
+                        unsafe_allow_html=True,
+                    )
             with c3:
                 created = item.created_at
                 if created:
-                    st.caption(f"📅 {created.strftime('%Y-%m-%d')}")
+                    st.markdown(
+                        f'<p class="pa-meta">{icon("calendar")}<span>{html.escape(created.strftime("%Y-%m-%d"))}</span></p>',
+                        unsafe_allow_html=True,
+                    )
 
             # action buttons: Edit reason + Delete
             ca, cb = st.columns(2)

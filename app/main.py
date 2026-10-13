@@ -91,7 +91,7 @@ def _sync_locale_from_query():
 
 st.set_page_config(
     page_title="Portfolio Agent | 投资组合助手",
-    page_icon="⚡",
+    page_icon=str(Path(__file__).parent / "styles" / "favicon.svg"),
     layout="wide",
 )
 inject_cyberpunk_theme()

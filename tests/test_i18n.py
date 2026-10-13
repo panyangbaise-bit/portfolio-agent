@@ -9,7 +9,7 @@ def test_translate_returns_requested_locale_and_formats_values():
 
 
 def test_translate_falls_back_to_english_for_unknown_locale():
-    assert translate("unknown", "nav.dashboard") == "📊 Dashboard"
+    assert translate("unknown", "nav.dashboard") == "Dashboard"
 
 
 def test_watchlist_strings_are_localized():
@@ -20,8 +20,8 @@ def test_watchlist_strings_are_localized():
     assert "监察" not in en_title
     assert zh_title == "监察表"
 
-    assert translate("en", "watchlist.action.edit") == "✏️ Edit"
-    assert translate("zh", "watchlist.action.edit") == "✏️ 编辑"
+    assert translate("en", "watchlist.action.edit") == "Edit"
+    assert translate("zh", "watchlist.action.edit") == "编辑"
     assert translate("en", "watchlist.col.reason") == "Reason"
     assert translate("zh", "watchlist.col.reason") == "关注理由"
 

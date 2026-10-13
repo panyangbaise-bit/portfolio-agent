@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 CSS_PATH = Path(__file__).parent / "cyberpunk.css"
+ICONS_PATH = Path(__file__).parent / "icons.css"
 
 FONT_IMPORT = (
     "@import url('https://fonts.googleapis.com/css2?"
@@ -39,7 +40,10 @@ def load_cyberpunk_css():
     # type: () -> str
     if not CSS_PATH.is_file():
         return ""
-    return CSS_PATH.read_text(encoding="utf-8")
+    css = CSS_PATH.read_text(encoding="utf-8")
+    if ICONS_PATH.is_file():
+        css += "\n" + ICONS_PATH.read_text(encoding="utf-8")
+    return css
 
 
 def build_theme_css(css):
@@ -124,6 +128,36 @@ def inject_cyberpunk_theme():
     doc.head.appendChild(el);
   }
   el.textContent = css;
+  function decorateNavIcons() {
+    const names = ["dashboard", "holdings", "watchlist", "recommendations", "operations", "history"];
+    const group = doc.querySelector('[data-testid="stSidebar"] [role="radiogroup"]');
+    if (!group) return false;
+    const labels = group.querySelectorAll(":scope > label");
+    if (!labels.length) return false;
+    labels.forEach(function (label, i) {
+      if (!names[i] || label.querySelector(".pa-icon")) return;
+      const icon = doc.createElement("i");
+      icon.className = "pa-icon pa-icon-" + names[i];
+      icon.setAttribute("aria-hidden", "true");
+      const nodes = label.querySelectorAll("div, p");
+      let host = null;
+      for (let n = nodes.length - 1; n >= 0; n--) {
+        const el = nodes[n];
+        if (el.querySelector("input")) continue;
+        if ((el.textContent || "").trim()) host = el;
+        if (host) break;
+      }
+      (host || label).prepend(icon);
+    });
+    return true;
+  }
+  if (!decorateNavIcons()) {
+    let tries = 0;
+    const timer = setInterval(function () {
+      tries += 1;
+      if (decorateNavIcons() || tries > 20) clearInterval(timer);
+    }, 100);
+  }
 """
         + _hide_iframe_host_js()
         + """
