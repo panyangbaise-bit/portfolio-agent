@@ -42,7 +42,7 @@
 
 ### 运行中心
 
-分为三个视图：**任务调度** 管理六个定时任务并支持立即运行；**运行记录** 可按任务和状态筛选，点击记录查看已保存的输出；**分析报告** 集中查看报告正文、建议和工具调用。月度总结与新闻轮询设置默认收起。时间按 `APP_TIMEZONE`（默认北京）。
+默认打开 **分析报告**：报告正文、建议和工具调用。**任务调度** 列出六个定时任务并支持立即运行；**运行记录** 可按任务和状态筛选，点开一条查看已保存的输出。月度总结与新闻轮询设置默认收起。时间按 `APP_TIMEZONE`（默认北京）。
 
 ![运行中心](docs/screenshots/operations.jpg)
 
@@ -65,7 +65,8 @@
 - **深度思考 Agent**：`deepseek-v4-pro` + 思考模式 + LangGraph 工具循环
 - **Ask Agent**：浮动多轮对话、流式回复，运行中心可查分析报告
 - **行情容错**：先缓存再刷新；适配器失败降级，不拖垮定时任务
-- **定时分析**：分市场盘后、新闻轮询（持仓 + 头条）、月度交易复盘
+- **定时分析**：分市场盘后、华尔街见闻新闻轮询（持仓 + 头条）、月度交易复盘
+- **Brave 网页搜索**：可选。见闻没有相关报道时，Agent 才用 Brave 补公开网页（`BRAVE_SEARCH_API_KEY`）
 - **决策落库**：会话、工具调用、建议与用户操作写入 SQLite
 - **双语界面**：右上角 **EN / CN**
 - **Telegram**：可选启动欢迎与分析摘要
@@ -79,7 +80,7 @@
 | **持仓** | 新增 / 编辑 / 买卖 / 成交流水 |
 | **监察表** | 未持仓标的、理由、目标区间 |
 | **建议** | 接受或忽略待处理建议 |
-| **运行中心** | 日程、立即运行、crontab、日志、会话详情 |
+| **运行中心** | 默认打开分析报告；也可查看任务调度、立即运行和运行记录 |
 | **历史** | 过往建议与处理结果 |
 
 ## 一键部署（Ubuntu）
@@ -104,7 +105,7 @@ sudo systemctl restart portfolio-agent
    pip install -r requirements.txt
    cp .env.example .env
    # 必填：DEEPSEEK_API_KEY
-   # 可选：TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、APP_TIMEZONE=Asia/Shanghai
+   # 可选：TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID、APP_TIMEZONE=Asia/Shanghai、BRAVE_SEARCH_API_KEY（见闻搜不到时再补网页）
    ```
 
 2. **启动**
@@ -121,7 +122,7 @@ sudo systemctl restart portfolio-agent
 
 6. **处理建议** — **建议** 页接受或忽略；完整记录在 **历史**。
 
-7. **运行分析** — **运行中心** 页看下次执行时间，或点 **立即运行**。结果在运行日志、会话详情，以及配置好的 Telegram。
+7. **运行分析** — **运行中心** 默认打开 **分析报告**。下次执行时间和 **立即运行** 在 **任务调度**。输出也会进入运行记录；配置了 Telegram 时会推送。新闻先搜华尔街见闻，没有相关结果时才用 Brave 补一次网页搜索。
 
 ## 快速开始
 
@@ -133,6 +134,26 @@ cp .env.example .env
 ```
 
 公网部署前设置 `AUTH_ENABLED=true` 与 `AUTH_PASSWORD`。连续输错密码后，客户端 IP 会写入 `data/ip_blacklist.json`。
+
+## 配置
+
+| 变量 | 必填 | 默认 |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | **是** | — |
+| `DEEPSEEK_BASE_URL` | 否 | `https://api.deepseek.com/v1` |
+| `DEEPSEEK_MODEL` | 否 | `deepseek-v4-pro` |
+| `DEEPSEEK_MAX_TOKENS` | 否 | `65536` |
+| `DEEPSEEK_REASONING_EFFORT` | 否 | `max` |
+| `DEEPSEEK_THINKING` | 否 | `true` |
+| `APP_TIMEZONE` | 否 | `Asia/Shanghai` |
+| `NEWS_CRONTAB` | 否 | `0 8-22/2 * * *`（也可在运行中心修改） |
+| `BRAVE_SEARCH_API_KEY` | 否 | 不启用网页搜索；仅当华尔街见闻没有相关新闻时才调用 |
+| `AUTH_ENABLED` | 否 | `false` |
+| `AUTH_PASSWORD` | 开启门禁时必填 | — |
+| `AUTH_MAX_FAILURES` | 否 | `3` |
+| `TELEGRAM_BOT_TOKEN` | 否 | 不推送 |
+| `TELEGRAM_CHAT_ID` | 否 | 不推送 |
+| `LANGSMITH_API_KEY` | 否 | 不追踪 |
 
 ## 验证
 

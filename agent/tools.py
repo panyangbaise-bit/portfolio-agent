@@ -22,6 +22,7 @@ from db.repository import (
     upsert_price,
 )
 from adapters.base import registry as adapter_registry
+from adapters.brave_search import brave_search
 from adapters.news import news_adapter
 from adapters.safe import error_payload
 
@@ -645,6 +646,29 @@ def get_market_headlines() -> list[dict]:
     return merged[:15]
 
 
+@tool
+def web_search(query: str, count: int = 5, days: int = 7) -> dict:
+    """用 Brave 搜索公开网页。只在华尔街见闻没有相关新闻时作为补充。
+
+    先调用 search_ticker_news（中文关键词）和 get_market_headlines。
+    仅当见闻结果为空，或标题/摘要与标的、事件明显无关时，再调用本工具。
+    不要把它当作查新闻的第一步，也不要为每个持仓都搜一遍。
+
+    Args:
+        query: 搜索词，例如「英伟达 财报」或「腾讯 回购」
+        count: 返回条数，1-10，默认 5
+        days: 时间窗口。1=过去一天，7=过去一周，31=过去一月；0 表示不限时间。默认 7
+
+    Returns:
+        dict: query, source=brave, results[{title, url, description, age}]
+    """
+    return _safe_invoke(
+        lambda: brave_search.search(query, count=count, days=days),
+        query=(query or "").strip()[:400],
+        source="brave",
+    )
+
+
 # ── Recommendation Tools ──────────────────────────────────
 
 @tool
@@ -872,6 +896,7 @@ ALL_TOOLS = [
     get_market_snapshot,
     search_ticker_news,
     get_market_headlines,
+    web_search,
     get_recommendation_history,
     get_trade_history,
     save_recommendation,

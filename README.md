@@ -42,7 +42,7 @@ Pending agent suggestions with confidence, urgency, and reasoning. **Accept** or
 
 ### Operations
 
-Three focused views: **Schedules** for the six recurring analyses and manual runs; **Run history** to filter outcomes and select a row to read its saved output; **Analysis reports** for full reports, recommendations, and tool calls. Monthly summaries and news schedule settings stay collapsed until needed. Times use `APP_TIMEZONE` (default Beijing).
+Opens on **Analysis reports**: full reports, recommendations, and tool calls. **Schedules** lists the six recurring jobs and manual runs; **Run history** filters outcomes and opens a row's saved output. Monthly summaries and the news crontab stay collapsed until needed. Times use `APP_TIMEZONE` (default Beijing).
 
 ![Operations](docs/screenshots/operations.jpg)
 
@@ -65,7 +65,8 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 - **DeepSeek thinking agent** — `deepseek-v4-pro`, thinking mode, `reasoning_effort=max`, LangGraph tool loop
 - **Ask Agent** — floating multi-turn chat, streaming replies, analysis report per conversation in Operations
 - **Live prices with fallbacks** — cache first, background refresh; adapters degrade instead of taking the job down
-- **Scheduled analysis** — after-market by venue, news poll (holdings + headlines), monthly trade review
+- **Scheduled analysis** — after-market by venue, WallStreetCN news poll (holdings + headlines), monthly trade review
+- **Brave web search** — optional. The agent calls it only when WallStreetCN returns nothing relevant (`BRAVE_SEARCH_API_KEY`)
 - **Decision log** — sessions, tool calls, recommendations, and user actions in SQLite
 - **Bilingual UI** — **EN / CN** toggle in the top-right banner
 - **Optional Telegram** — startup welcome + analysis summaries
@@ -79,7 +80,7 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 | **Holdings** | Add / edit / trade / transaction history |
 | **Watchlist** | Pre-entry tickers, reason, target range |
 | **Recommendations** | Accept or dismiss pending suggestions |
-| **Operations** | Schedule, Run Now, crontab, runtime log, session detail |
+| **Operations** | Analysis reports by default; schedules, Run Now, and run history |
 | **History** | Past recommendations and outcomes |
 
 ## Deploy on Ubuntu
@@ -104,7 +105,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
    pip install -r requirements.txt
    cp .env.example .env
    # Required: DEEPSEEK_API_KEY
-   # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, APP_TIMEZONE=Asia/Shanghai
+   # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, APP_TIMEZONE=Asia/Shanghai, BRAVE_SEARCH_API_KEY
    ```
 
 2. **Start**
@@ -121,7 +122,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 
 6. **Review suggestions** — **Recommendations** to Accept / Dismiss. Full trail under **History**.
 
-7. **Run analysis** — **Operations** shows next run times. **Run Now** or wait for cron. Results land in the runtime log, session detail, and Telegram when configured.
+7. **Run analysis** — **Operations** opens on **Analysis reports**. **Schedules** has next-run times and **Run Now**. Output also lands in run history, and in Telegram when configured. News is searched on WallStreetCN first; Brave web search fills a gap only when that search has nothing relevant.
 
 ## Configuration
 
@@ -135,6 +136,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 | `DEEPSEEK_THINKING` | No | `true` |
 | `APP_TIMEZONE` | No | `Asia/Shanghai` |
 | `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable in Operations) |
+| `BRAVE_SEARCH_API_KEY` | No | web search off; used only when WallStreetCN news has no relevant hit |
 | `AUTH_ENABLED` | No | `false` |
 | `AUTH_PASSWORD` | If auth on | — |
 | `AUTH_MAX_FAILURES` | No | `3` |
@@ -151,7 +153,7 @@ Before a public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. Af
 | UI | Streamlit 1.33+ |
 | Agent | LangGraph + LangChain tools |
 | LLM | `DeepSeekChatOpenAI` → `deepseek-v4-pro` (thinking mode) |
-| Market data | yfinance, akshare, CoinGecko, WallStreetCN |
+| Market data | yfinance, akshare, CoinGecko, WallStreetCN; Brave web search optional |
 | Persistence | SQLite + SQLAlchemy 2.0 |
 | Scheduler | APScheduler |
 | Notifications | Telegram Bot (send-only, optional) |
@@ -167,7 +169,7 @@ PYTHONPATH=. python3 -m pytest tests -v
 
 ```text
 portfolio-agent/
-├── adapters/           # Market / news data adapters
+├── adapters/           # Market data, WallStreetCN news, optional Brave search
 ├── agent/              # LangGraph graph, prompts, tools, DeepSeek client
 ├── app/                # Streamlit UI, i18n, theme
 ├── db/                 # Models, repository, migrations

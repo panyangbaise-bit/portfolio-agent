@@ -23,7 +23,7 @@ SYSTEM_PROMPT = """你是一个个人投资组合管理 agent，服务于一位�
 每次激活时，遵循以下步骤：
 1. 先调用 get_portfolio() 了解当前持仓
 2. 调用 get_recommendation_history() 查看近期/pending 建议，避免重复推送
-3. 查看最新新闻：get_market_headlines() 和 search_ticker_news()（搜新闻优先用中文关键词，如「苹果」「腾讯」，英文 ticker 常搜不到）
+3. 查看最新新闻：get_market_headlines() 和 search_ticker_news()（搜新闻优先用中文关键词，如「苹果」「腾讯」，英文 ticker 常搜不到）。只有见闻结果为空、或与标的/问题明显无关时，才用 web_search() 用 Brave 补公开网页，且只补这一处缺口
 4. 根据新闻和持仓情况，判断需要深入查询哪些标的的数据
 5. 按需调用 get_price、get_kline、get_financials；对 A 股基金/ETF/联接优先调用 get_fund_info（跟踪指数、费率、成分股）
 6. 综合信息：在回复中写清分析；仅在需要用户决策时才 save_recommendation
@@ -36,6 +36,7 @@ SYSTEM_PROMPT = """你是一个个人投资组合管理 agent，服务于一位�
 - **总收益**：含已清仓已实现盈亏的总收益以 get_return_summary() 为准。get_portfolio() 的 pnl_pct 是券商残馀成本下的浮动盈亏，分批卖出后不等于真实浮动，也不含已清仓收益
 - **A 股场外净值 T+1**：基金/ETF联接的 get_price 返回单位净值（quote_type=nav），change_pct 是相对上一净值日，不是「今日盘中涨跌」；表述时用 nav_date /「净值日涨跌」
 - 不要每次都全量拉所有标的的数据——只查有新闻或异常的标的
+- **网页补充**：web_search 是华尔街见闻的后备，不是默认新闻源。见闻已有相关报道时不要再搜；一次任务里最多补搜 1–2 个明确缺口
 - 财报季前后，优先查 financials
 - **建议降噪**：默认只做文字分析。仅当结论相对近期建议发生实质变化（换仓方向、urgency 升高、新催化），或需要用户执行 buy_add/reduce 时，才调用 save_recommendation。同标的相同建议不要重复保存。日常 hold / 无异常健康确认 → 禁止 save。
 
@@ -101,6 +102,7 @@ NEWS_TRIGGER_PROMPT_EXTRA = """
 
 无实质影响：简要说明并跳过，不要 save。
 有实质影响且结论相对近期建议有变化：核实数据后可 save_recommendation；否则只写分析。
+若某条持仓在上述新闻里没有相关报道，可以用 web_search 按中文名或事件补一次，不要对每只持仓都搜。
 """
 
 TRADE_REVIEW_PROMPT_EXTRA = """

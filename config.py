@@ -82,6 +82,12 @@ class Config:
 
     # News API
     WALLSTREETCN_BASE_URL: str = "https://api-one-wscn.awtmt.com/apiv1"
+    # Optional Brave web search. The agent uses it only after WallStreetCN has no relevant hit.
+    BRAVE_SEARCH_API_KEY: str = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    BRAVE_SEARCH_BASE_URL: str = os.environ.get(
+        "BRAVE_SEARCH_BASE_URL",
+        "https://api.search.brave.com/res/v1/web/search",
+    )
 
     # Markets that require trading-day checks (crypto is 24/7)
     TRADING_MARKETS: dict = {
