@@ -2,7 +2,7 @@
 
 [中文文档](README_CN.md)
 
-An AI portfolio OS for **US / China A-share / Hong Kong / crypto** holdings. A cyberpunk Streamlit dashboard, a DeepSeek thinking-mode agent (LangGraph + tools), live market adapters, scheduled analysis, and optional Telegram alerts.
+An AI portfolio OS for **US / China A-share / Hong Kong / crypto** holdings. A light terminal-style Streamlit dashboard (IBM Plex Mono, black rules on white), a DeepSeek thinking-mode agent (LangGraph + tools), live market adapters, scheduled analysis, and optional Telegram alerts.
 
 Open locally at [http://localhost:8501](http://localhost:8501) after `./run.sh`.
 
@@ -12,7 +12,7 @@ Captured from the running app (`http://127.0.0.1:8501`, English UI).
 
 ### Dashboard
 
-CNY-normalized total value and P&L, pending recommendations, risk level, then **core** vs **satellite** holdings with live prices. The red star in the corner is **Ask Agent**.
+CNY-normalized total value and P&L, pending recommendations, risk level, then **core** vs **satellite** holdings with live prices. The black square in the corner is **Ask Agent**.
 
 ![Portfolio Dashboard](docs/screenshots/dashboard.png)
 
@@ -117,7 +117,7 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 
 4. **Watch before entry** — **Watchlist** for names you care about but do not hold yet.
 
-5. **Monitor** — **Dashboard** for CNY totals, P&L, and risk. **Ask Agent** (star button) for ad-hoc questions.
+5. **Monitor** — **Dashboard** for CNY totals, P&L, and risk. **Ask Agent** (corner button) for ad-hoc questions.
 
 6. **Review suggestions** — **Recommendations** to Accept / Dismiss. Full trail under **History**.
 
@@ -169,7 +169,7 @@ PYTHONPATH=. python3 -m pytest tests -v
 portfolio-agent/
 ├── adapters/           # Market / news data adapters
 ├── agent/              # LangGraph graph, prompts, tools, DeepSeek client
-├── app/                # Streamlit UI, i18n, cyberpunk theme
+├── app/                # Streamlit UI, i18n, theme
 ├── db/                 # Models, repository, migrations
 ├── scheduler/          # Cron jobs and manual triggers
 ├── notifier/           # Telegram
@@ -181,4 +181,3 @@ portfolio-agent/
 ## Design documents
 
 - [Original design](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)
-- [Cyberpunk dashboard design](docs/superpowers/specs/2026-07-18-cyberpunk-ui-design.md)

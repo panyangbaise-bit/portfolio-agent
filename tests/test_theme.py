@@ -22,7 +22,7 @@ def test_build_theme_css_includes_fonts_and_host_hide():
     css = build_theme_css(":root{--cp-bg:#05050a;}")
     assert "--cp-bg" in css
     assert "fonts.googleapis.com" in css
-    assert "Orbitron" in css
+    assert "IBM+Plex+Mono" in css
     assert "stElementContainer" in css
 
 

@@ -1,4 +1,4 @@
-"""Cyberpunk theme loader for Streamlit."""
+"""Theme loader for Streamlit. Visual direction follows Alpha Arena."""
 
 import json
 from pathlib import Path
@@ -7,7 +7,7 @@ CSS_PATH = Path(__file__).parent / "cyberpunk.css"
 
 FONT_IMPORT = (
     "@import url('https://fonts.googleapis.com/css2?"
-    "family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Orbitron:wght@500;700&display=swap');"
+    "family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');"
 )
 
 # Hide zero-height theme iframe hosts so they never consume layout.
