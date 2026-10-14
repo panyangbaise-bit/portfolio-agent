@@ -359,3 +359,30 @@ def test_bailian_request_sends_model_dimensions_and_float_format(monkeypatch):
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_DIMENSIONS", 2048)
     with pytest.raises(backends.BackendError, match="requires"):
         backends.embed(["bad dimensions"])
+
+
+def test_configured_document_batches_are_independent(engine, monkeypatch):
+    monkeypatch.setattr(config, "MEMORY_IMPORT_BATCH_SIZE", 3)
+    monkeypatch.setattr(config, "MEMORY_LEXICAL_BATCH_SIZE", 2)
+    monkeypatch.setattr(config, "MEMORY_VECTOR_DOCUMENT_BATCH_SIZE", 2)
+    monkeypatch.setattr(config, "MEMORY_BATCH_SIZE", 1)
+    with Session(engine) as db:
+        db.info["skip_memory_capture"] = True
+        db.add_all([Holding(ticker=f"TEST{i}", market="US", shares=1, cost_basis=1) for i in range(5)])
+        db.commit()
+    assert backfill_batch(engine) == 3
+    assert index_lexical_batch(engine) == 2
+    assert backfill_batch(engine) == 2
+    assert index_lexical_batch(engine) == 2
+    batches = []
+    class Healthy:
+        def ensure(self): pass
+        def upsert(self, points): batches.append(points)
+    monkeypatch.setattr(backends, "configured", lambda: True)
+    monkeypatch.setattr(backends, "Qdrant", Healthy)
+    monkeypatch.setattr(backends, "embed", lambda texts: [[1., 0.] for _ in texts])
+    assert index_vector_batch(engine) == 2
+    assert len({p["payload"]["document_id"] for batch in batches for p in batch}) == 2
+    assert all(len(batch) == 1 for batch in batches)
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(MemoryDocument).where(MemoryDocument.vector_profile.is_not(None))) == 2

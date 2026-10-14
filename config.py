@@ -18,8 +18,11 @@ class Config:
     MEMORY_QDRANT_URL = os.environ.get("MEMORY_QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
     MEMORY_QDRANT_API_KEY = os.environ.get("MEMORY_QDRANT_API_KEY", "")
     MEMORY_COLLECTION = os.environ.get("MEMORY_COLLECTION", "portfolio_memory")
-    MEMORY_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_BATCH_SIZE", "4"))))
-    MEMORY_INTERVAL_SECONDS = max(5, int(os.environ.get("MEMORY_INTERVAL_SECONDS", "30")))
+    MEMORY_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_BATCH_SIZE", "20"))))
+    MEMORY_INTERVAL_SECONDS = max(5, int(os.environ.get("MEMORY_INTERVAL_SECONDS", "10")))
+    MEMORY_IMPORT_BATCH_SIZE = max(1, min(200, int(os.environ.get("MEMORY_IMPORT_BATCH_SIZE", "50"))))
+    MEMORY_LEXICAL_BATCH_SIZE = max(1, min(200, int(os.environ.get("MEMORY_LEXICAL_BATCH_SIZE", "50"))))
+    MEMORY_VECTOR_DOCUMENT_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_VECTOR_DOCUMENT_BATCH_SIZE", "4"))))
     MEMORY_EMBEDDING_SEND_DIMENSIONS = os.environ.get("MEMORY_EMBEDDING_SEND_DIMENSIONS", "true").lower() in ("1", "true", "yes")
 
     # Database

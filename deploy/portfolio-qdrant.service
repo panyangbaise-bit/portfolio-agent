@@ -1,0 +1,35 @@
+[Unit]
+Description=Portfolio memory Qdrant
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=portfolio-qdrant
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/portfolio-qdrant
+ExecStart=/opt/portfolio-qdrant/v1.18.0/qdrant --config-path /etc/portfolio-qdrant/config.yaml
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=60
+MemoryHigh=500M
+MemoryMax=600M
+CPUQuota=75%
+TasksMax=128
+LimitNOFILE=65536
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

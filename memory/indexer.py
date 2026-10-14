@@ -53,8 +53,9 @@ def chunks(body, size=1600):
         yield buffer
 
 
-def backfill_batch(engine, limit=25):
+def backfill_batch(engine, limit=None):
     """Keyset checkpoints prevent rescanning all history on every startup."""
+    limit = config.MEMORY_IMPORT_BATCH_SIZE if limit is None else max(1, min(200, int(limit)))
     count = 0
     with Session(engine) as db:
         db.execute(text("BEGIN IMMEDIATE"))
@@ -85,7 +86,8 @@ def backfill_batch(engine, limit=25):
     return count
 
 
-def index_lexical_batch(engine, limit=8):
+def index_lexical_batch(engine, limit=None):
+    limit = config.MEMORY_LEXICAL_BATCH_SIZE if limit is None else max(1, min(200, int(limit)))
     with Session(engine) as db:
         db.execute(text("BEGIN IMMEDIATE"))
         docs = db.scalars(select(MemoryDocument).where(MemoryDocument.indexed_at.is_(None))
@@ -127,7 +129,8 @@ def embed_cached(engine, texts):
     return [cached[h] for h in hashes]
 
 
-def index_vector_batch(engine, limit=1):
+def index_vector_batch(engine, limit=None):
+    limit = config.MEMORY_VECTOR_DOCUMENT_BATCH_SIZE if limit is None else max(1, min(20, int(limit)))
     if not backends.configured():
         return 0
     version = backends.profile()

@@ -1,0 +1,27 @@
+# Native single-node deployment for the 2 GiB host.
+log_level: INFO
+telemetry_disabled: true
+storage:
+  storage_path: /var/lib/portfolio-qdrant/storage
+  snapshots_path: /var/lib/portfolio-qdrant/snapshots
+  on_disk_payload: true
+  performance:
+    max_search_threads: 1
+    optimizer_cpu_budget: 1
+  optimizers:
+    max_optimization_threads: 1
+    default_segment_number: 1
+  hnsw_index:
+    max_indexing_threads: 1
+    on_disk: true
+  collection:
+    vectors:
+      on_disk: true
+service:
+  host: 127.0.0.1
+  http_port: 6333
+  grpc_port: null
+  max_workers: 1
+  enable_cors: false
+cluster:
+  enabled: false
