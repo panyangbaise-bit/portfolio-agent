@@ -524,6 +524,7 @@ def _add_to_watchlist_inner(
 ):
     from db.repository import create_watchlist_item, get_watchlist_by_ticker
     session = get_session()
+    session.info["memory_actor"] = "agent"
     try:
         existing = get_watchlist_by_ticker(session, ticker)
         if existing:
@@ -562,6 +563,7 @@ def remove_from_watchlist(ticker: str) -> dict:
 
     def _run():
         session = get_session()
+        session.info["memory_actor"] = "agent"
         try:
             item = get_watchlist_by_ticker(session, ticker)
             if not item:
@@ -705,6 +707,8 @@ def _get_recommendation_history_inner(ticker, limit):
                 "urgency": r.urgency,
                 "status": r.status,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "user_feedback": {"action": r.user_action.action, "reason": r.user_action.notes,
+                                  "acted_at": r.user_action.acted_at.isoformat()} if r.user_action else None,
             }
             for r in recs
         ]
@@ -885,7 +889,10 @@ def save_recommendation(
 
 # ── Tool Collection ───────────────────────────────────────
 
+from memory.tools import search_memory, read_memory, get_instrument_timeline
+
 ALL_TOOLS = [
+    search_memory, read_memory, get_instrument_timeline,
     get_portfolio,
     get_return_summary,
     get_holding,

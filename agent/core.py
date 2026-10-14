@@ -389,6 +389,7 @@ def run_ad_hoc_query_stream(
     """
     session = AgentSessionManager(triggered_by=triggered_by, job_id=job_id)
     session.start_or_resume(session_id)
+    session.record_message("user", question)
 
     max_turns = int(config.ASK_AGENT_HISTORY_TURNS)
     trimmed = _trim_ask_agent_history(history or [], max_turns)

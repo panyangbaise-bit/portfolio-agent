@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from config import config
 from db.models import (
     Base, Holding, Transaction, PriceCache, NewsArticle, FinancialReport,
-    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction, TradingDiscipline,
+    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction, TradingDiscipline, ConversationMessage,
 )
 
 
@@ -49,7 +49,7 @@ def create_holding(session: Session, ticker: str, market: str, shares: float,
 
 
 def get_all_holdings(session: Session) -> list[Holding]:
-    return session.query(Holding).all()
+    return session.query(Holding).filter(Holding.status != "archived").all()
 
 
 def get_open_holdings(session: Session) -> list[Holding]:
@@ -58,7 +58,7 @@ def get_open_holdings(session: Session) -> list[Holding]:
 
 
 def get_holding_by_ticker(session: Session, ticker: str) -> Optional[Holding]:
-    return session.query(Holding).filter(Holding.ticker == ticker.upper()).first()
+    return session.query(Holding).filter(Holding.ticker == ticker.upper(), Holding.status != "archived").first()
 
 
 def update_holding(session: Session, holding_id: int, **kwargs) -> Optional[Holding]:
@@ -74,7 +74,9 @@ def update_holding(session: Session, holding_id: int, **kwargs) -> Optional[Hold
 def delete_holding(session: Session, holding_id: int) -> bool:
     holding = session.query(Holding).filter(Holding.id == holding_id).first()
     if holding:
-        session.delete(holding)
+        # Keep the ledger and identity for historical evidence. Archived rows
+        # are excluded from current portfolio/return calculations.
+        holding.status = "archived"
         session.commit()
         return True
     return False
@@ -98,7 +100,7 @@ def create_transaction(session: Session, holding_id: int, action: str,
 
 def list_transactions(session: Session) -> list[Transaction]:
     """Every trade, oldest first, so ledgers can be replayed in order."""
-    return session.query(Transaction).order_by(Transaction.date, Transaction.id).all()
+    return session.query(Transaction).join(Holding).filter(Holding.status != "archived").order_by(Transaction.date, Transaction.id).all()
 
 
 def get_transactions_for_holding(session: Session, holding_id: int) -> list[Transaction]:
@@ -146,7 +148,7 @@ def apply_trade(
         raise ValueError("Price must be positive")
 
     holding = session.query(Holding).filter(Holding.id == holding_id).first()
-    if not holding:
+    if not holding or holding.status == "archived":
         raise ValueError(f"Holding not found: {holding_id}")
 
     closed_exit = False
@@ -297,7 +299,9 @@ def create_agent_session(session: Session, triggered_by: str,
                          news_snapshot: dict = None,
                          job_id: str = None,
                          market: str = None) -> AgentSession:
+    from memory.context import current_run_id
     s = AgentSession(
+        job_run_id=current_run_id.get(),
         triggered_by=triggered_by,
         news_snapshot=news_snapshot,
         job_id=job_id,
@@ -337,6 +341,19 @@ def end_agent_session(
         return
     s.status = status
     s.ended_at = datetime.now(timezone.utc)
+    if summary and s.job_id in ("ask_agent", "a2a") and summary.startswith("Q: ") and "\nA: " in summary:
+        # Legacy UI summary stays available; memory uses separately timestamped turns.
+        # The user message was saved on send; the answer is saved on completion.
+        last = session.query(ConversationMessage).filter_by(session_id=s.id).order_by(ConversationMessage.id.desc()).first()
+        prefix = f"Q: {last.content}\nA: " if last is not None and last.role == "user" else None
+        if prefix and summary.startswith(prefix):
+            # User text may itself contain the legacy Q/A separator.
+            question, answer = last.content, summary[len(prefix):]
+        else:
+            question, answer = summary[3:].split("\nA: ", 1)
+        if last is None or last.role != "user" or last.content != question:
+            session.add(ConversationMessage(session_id=s.id, role="user", content=question))
+        session.add(ConversationMessage(session_id=s.id, role="assistant", content=answer))
     if summary is not None:
         if append_summary and s.summary:
             s.summary = f"{s.summary}\n\n---\n{summary}"
@@ -654,7 +671,7 @@ def create_watchlist_item(
 def get_watchlist_items(session: Session, status: str = None) -> list:
     """Return watchlist items, optionally filtered by status."""
     from db.models import WatchlistItem
-    q = session.query(WatchlistItem)
+    q = session.query(WatchlistItem).filter(WatchlistItem.status != "archived")
     if status:
         q = q.filter(WatchlistItem.status == status)
     return q.order_by(WatchlistItem.priority.desc(), WatchlistItem.created_at.desc()).all()
@@ -663,7 +680,7 @@ def get_watchlist_items(session: Session, status: str = None) -> list:
 def get_watchlist_by_ticker(session: Session, ticker: str):
     """Return a watchlist item by ticker, or None."""
     from db.models import WatchlistItem
-    return session.query(WatchlistItem).filter(WatchlistItem.ticker == ticker.upper()).first()
+    return session.query(WatchlistItem).filter(WatchlistItem.ticker == ticker.upper(), WatchlistItem.status != "archived").first()
 
 
 def update_watchlist_item(session: Session, item_id: int, **kwargs):
@@ -685,11 +702,11 @@ def update_watchlist_item(session: Session, item_id: int, **kwargs):
 
 
 def delete_watchlist_item(session: Session, item_id: int) -> bool:
-    """Delete a watchlist item. Returns True if deleted."""
+    """Archive a watchlist item while preserving its identity and history."""
     from db.models import WatchlistItem
     item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
     if item:
-        session.delete(item)
+        item.status = "archived"
         session.commit()
         return True
     return False

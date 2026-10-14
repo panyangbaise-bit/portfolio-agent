@@ -66,6 +66,13 @@ class AgentSessionManager:
             return self.resume(session_id)
         return self.start()
 
+    def record_message(self, role: str, content: str):
+        from db.models import ConversationMessage
+        if self.session_id:
+            with get_session() as db:
+                db.add(ConversationMessage(session_id=self.session_id, role=role, content=content))
+                db.commit()
+
     def record_tool_call(self, tool_name: str, params: dict = None, result_summary: str = None):
         if not self.session_id:
             return

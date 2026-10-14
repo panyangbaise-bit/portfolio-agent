@@ -183,3 +183,7 @@ portfolio-agent/
 ## Design documents
 
 - [Original design](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)
+
+### Investment memory
+
+Search historical recommendations, dismissal reasons, analysis reports, trades, conversations and trading rules from the **Memory** page or agent tools. SQLite full-text search works out of the box; optional Qdrant + an external embedding API adds semantic retrieval without loading a model on the server. [Setup, resource limits and historical-time behavior](docs/memory.md).

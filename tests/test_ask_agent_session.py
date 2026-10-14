@@ -35,6 +35,9 @@ def test_run_ad_hoc_reuses_session_id(monkeypatch):
             self._resumed = False
             self.summaries = []
 
+        def record_message(self, role, content):
+            pass
+
         def start_or_resume(self, session_id=None):
             created.append(session_id)
             if session_id:
@@ -91,6 +94,9 @@ def test_run_ad_hoc_trims_history_before_state(monkeypatch):
 
     class FakeSession:
         session_id = 1
+
+        def record_message(self, role, content):
+            pass
 
         def start_or_resume(self, session_id=None):
             return 1

@@ -36,6 +36,7 @@ NAV_ITEMS = [
     ("recommendations", "app/views/recommendations.py"),
     ("jobs", "app/views/operations.py"),
     ("history", "app/views/history.py"),
+    ("memory", "app/views/memory.py"),
 ]
 
 
@@ -61,6 +62,8 @@ def init():
 
         init_db()
         migrate(engine)
+        from memory.indexer import start_worker
+        start_worker(engine)
         logger.info("Database initialized and migrated.")
 
         registry.register("US", USMarketAdapter())
@@ -111,6 +114,10 @@ st.sidebar.caption(t("app.tagline"))
 st.sidebar.divider()
 
 # Views live in app/views/ (NOT app/pages/) so Streamlit won't auto-add multipage tabs.
+memory_link = st.query_params.get("memory")
+if memory_link and st.session_state.get("opened_memory_link") != memory_link:
+    st.session_state["nav_page"] = "memory"
+    st.session_state["opened_memory_link"] = memory_link
 page_key = st.sidebar.radio(
     "Navigation",
     options=[key for key, _ in NAV_ITEMS],

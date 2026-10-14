@@ -164,3 +164,7 @@ PYTHONPATH=. python3 -m pytest tests -v
 ## 设计文档
 
 完整设计见 [docs/superpowers/specs/2026-07-18-portfolio-agent-design.md](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)。
+
+### 投资记忆库
+
+通过**记忆库**页面或 Agent 工具检索历史建议、拒绝理由、分析报告、交易、对话和交易纪律。SQLite 全文搜索开箱即用，可选接入 Qdrant 与外部 Embedding API 实现语义检索，服务器无需加载模型。支持来源引用、历史版本和时间边界。[部署、资源配置与历史时间说明](docs/memory.md)。

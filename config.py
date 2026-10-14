@@ -8,6 +8,20 @@ PROJECT_ROOT = Path(__file__).parent
 
 
 class Config:
+    # Portfolio memory: local lexical search works without external credentials.
+    MEMORY_ENABLED = os.environ.get("MEMORY_ENABLED", "true").lower() in ("1", "true", "yes")
+    MEMORY_VECTOR_ENABLED = os.environ.get("MEMORY_VECTOR_ENABLED", "false").lower() in ("1", "true", "yes")
+    MEMORY_EMBEDDING_BASE_URL = os.environ.get("MEMORY_EMBEDDING_BASE_URL", "").rstrip("/")
+    MEMORY_EMBEDDING_API_KEY = os.environ.get("MEMORY_EMBEDDING_API_KEY", "") or os.environ.get("DASHSCOPE_API_KEY", "")
+    MEMORY_EMBEDDING_MODEL = os.environ.get("MEMORY_EMBEDDING_MODEL", "qwen3.7-text-embedding-flash")
+    MEMORY_EMBEDDING_DIMENSIONS = int(os.environ.get("MEMORY_EMBEDDING_DIMENSIONS", "1024"))
+    MEMORY_QDRANT_URL = os.environ.get("MEMORY_QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
+    MEMORY_QDRANT_API_KEY = os.environ.get("MEMORY_QDRANT_API_KEY", "")
+    MEMORY_COLLECTION = os.environ.get("MEMORY_COLLECTION", "portfolio_memory")
+    MEMORY_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_BATCH_SIZE", "4"))))
+    MEMORY_INTERVAL_SECONDS = max(5, int(os.environ.get("MEMORY_INTERVAL_SECONDS", "30")))
+    MEMORY_EMBEDDING_SEND_DIMENSIONS = os.environ.get("MEMORY_EMBEDDING_SEND_DIMENSIONS", "true").lower() in ("1", "true", "yes")
+
     # Database
     DATABASE_URL: str = f"sqlite:///{PROJECT_ROOT / 'portfolio.db'}"
 

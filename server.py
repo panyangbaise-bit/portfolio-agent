@@ -34,6 +34,10 @@ from a2a.server import start_a2a_server
 init_db()
 migrate(engine)
 logger.info("Database initialized and migrated.")
+from memory.indexer import start_worker, stop_worker
+import atexit
+start_worker(engine)
+atexit.register(stop_worker)
 
 registry.register("US", USMarketAdapter())
 registry.register("CN", CNMarketAdapter())

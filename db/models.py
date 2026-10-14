@@ -117,6 +117,7 @@ class AgentSession(Base):
     triggered_by: Mapped[str] = mapped_column(String(20), nullable=False)
     job_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     market: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    job_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job_runs.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
     news_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -240,3 +241,70 @@ class TradingDiscipline(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class ConversationMessage(Base):
+    __tablename__ = "conversation_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("agent_sessions.id"), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class MemoryDocument(Base):
+    """Immutable source snapshot and transactional indexing outbox.
+
+    Content/metadata never change. Only processing state may change. A source
+    can have many versions; IDs also serve as stable evidence references.
+    """
+    __tablename__ = "memory_documents"
+    __table_args__ = (Index("ix_memory_source", "source_type", "source_id", "id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_type: Mapped[str] = mapped_column(String(40))
+    source_id: Mapped[int] = mapped_column()
+    operation: Mapped[str] = mapped_column(String(20))
+    actor: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(Text)
+    body: Mapped[str] = mapped_column(Text)
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    previous: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    instruments: Mapped[list] = mapped_column(JSON, default=list)
+    relations: Mapped[list] = mapped_column(JSON, default=list)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    known_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    time_quality: Mapped[str] = mapped_column(String(20), default="recorded")
+    content_hash: Mapped[str] = mapped_column(String(64))
+    indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    vector_profile: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class MemoryChunk(Base):
+    __tablename__ = "memory_chunks"
+    __table_args__ = (UniqueConstraint("document_id", "ordinal"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("memory_documents.id"), index=True)
+    ordinal: Mapped[int] = mapped_column()
+    body: Mapped[str] = mapped_column(Text)
+
+
+class MemoryEmbedding(Base):
+    """Reusable embedding cache across retries and identical source chunks."""
+    __tablename__ = "memory_embeddings"
+    profile: Mapped[str] = mapped_column(String(64), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    vector: Mapped[list] = mapped_column(JSON)
+
+
+class MemoryCheckpoint(Base):
+    __tablename__ = "memory_checkpoints"
+    source_type: Mapped[str] = mapped_column(String(40), primary_key=True)
+    last_id: Mapped[int] = mapped_column(default=0)
+
+
+# Install once for every ORM write path, including UI and agent tools.
+from memory.capture import install_capture
+install_capture()

@@ -17,13 +17,17 @@ from agent.core import (
 from notifier.telegram import notify
 from scheduler.triggers import is_trading_day
 
+from memory.context import current_run_id
+
 logger = logging.getLogger(__name__)
 
 
 def _start_job_run(job_id: str, job_name: str) -> int:
     session = get_session()
     try:
-        return create_job_run(session, job_id, job_name).id
+        run_id = create_job_run(session, job_id, job_name).id
+        current_run_id.set(run_id)
+        return run_id
     finally:
         session.close()
 
@@ -34,6 +38,7 @@ def _finish_job_run(run_id: int, status: str, details: str = None):
         finish_job_run(session, run_id, status, details)
         return {"status": status, "details": details}
     finally:
+        current_run_id.set(None)
         session.close()
 
 

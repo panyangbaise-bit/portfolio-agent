@@ -11,6 +11,9 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
     class FakeSession:
         session_id = 7
 
+        def record_message(self, role, content):
+            pass
+
         def start_or_resume(self, session_id=None):
             return 7
 
@@ -76,6 +79,9 @@ def test_run_ad_hoc_query_stream_includes_history_in_state(monkeypatch):
 
     class FakeSession:
         session_id = 9
+
+        def record_message(self, role, content):
+            pass
 
         def start_or_resume(self, session_id=None):
             return 9

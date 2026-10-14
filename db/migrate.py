@@ -111,6 +111,13 @@ def _backfill_opening_buys(conn: Connection) -> None:
         )
 
 
+def _create_memory_tables(conn):
+    from db.models import ConversationMessage, MemoryDocument, MemoryChunk, MemoryCheckpoint, MemoryEmbedding
+    for model in (ConversationMessage, MemoryDocument, MemoryChunk, MemoryCheckpoint, MemoryEmbedding):
+        model.__table__.create(conn, checkfirst=True)
+    conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(tokens)"))
+
+
 MIGRATIONS = [
     # Each entry: (version, sql_statement | callable)
     # Version 1: add name column to holdings (added 2026-07-18)
@@ -194,6 +201,8 @@ MIGRATIONS = [
             updated_at DATETIME NOT NULL
         )""",
     ),
+    ("v9_memory", _create_memory_tables),
+    ("v9b_session_run", "ALTER TABLE agent_sessions ADD COLUMN job_run_id INTEGER REFERENCES job_runs(id)"),
 ]
 
 
