@@ -170,10 +170,11 @@ def index_vector_batch(engine, limit=None):
             with Session(engine) as db:
                 doc = db.get(MemoryDocument, ident)
                 doc.attempts += 1
-                doc.error = str(exc) if isinstance(exc, backends.BackendError) else type(exc).__name__
+                failure = str(exc) if isinstance(exc, backends.BackendError) else type(exc).__name__
+                doc.error = failure
                 doc.retry_at = utcnow() + timedelta(seconds=min(3600, 30 * 2**min(doc.attempts, 7)))
                 db.commit()
-            logger.warning("Memory vector indexing delayed for document %s (%s)", ident, type(exc).__name__)
+            logger.warning("Memory vector indexing delayed for document %s (%s)", ident, failure)
     return len(ids)
 
 

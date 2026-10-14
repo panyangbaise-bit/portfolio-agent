@@ -112,3 +112,5 @@ MEMORY_INTERVAL_SECONDS=10
 前三项分别是每轮导入原始记录数、建立全文索引的文档数、建立向量索引的文档数；`MEMORY_BATCH_SIZE` 是单次 Embedding 请求的片段数上限，不是文档数。前两项允许 1–200，向量文档数允许 1–20，Embedding 片段数允许 1–20，间隔至少 5 秒。索引仍为单线程串行，避免同时发起大量请求。每轮耗时另计，截图里的 883 篇全文积压在没有新增和耗时的理想情况下约需 18 轮，实际还受历史导入、长报告和向量请求影响，不能保证 3 分钟完成。
 
 向量计数为 0 并不一定是 batch 小：检查 Qdrant 健康状态、百炼接口/密钥和 `python -m memory status` 中的失败数量。失败有退避等待，增大 batch 不会修复连接或认证问题；可以查看 `journalctl -u portfolio-agent` 的 `Memory vector indexing delayed` 记录。已生成的缓存向量和完成的全文索引会保留。
+
+后续重试的错误会区分 `Embedding unavailable (...)` 和 `Qdrant unavailable (...)`，日志也会记录这一脱敏原因。前者需要检查服务器到百炼的网络和接口；后者检查本机 Qdrant 状态、重启次数及内存。已有 `Service unavailable (...)` 错误会在下一次重试时更新，不必清空索引。`vector_errors` 是当前带错误记录的文档数，不是累计失败次数；成功后会清除。退避最长一小时，重启应用不会重置已保存的重试时间。

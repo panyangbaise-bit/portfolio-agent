@@ -24,18 +24,18 @@ def configured():
                 and config.MEMORY_EMBEDDING_MODEL and config.MEMORY_EMBEDDING_API_KEY)
 
 
-def request(method, url, **kwargs):
+def request(method, url, *, service="Service", **kwargs):
     try:
         response = requests.request(method, url, timeout=(3, 15), **kwargs)
     except requests.RequestException as exc:
         # Provider URLs, authorization headers and response bodies may contain secrets.
-        raise BackendError(f"Service unavailable ({type(exc).__name__})") from None
+        raise BackendError(f"{service} unavailable ({type(exc).__name__})") from None
     if response.status_code >= 400:
-        raise BackendError(f"Service returned HTTP {response.status_code}")
+        raise BackendError(f"{service} returned HTTP {response.status_code}")
     try:
         return response.json()
     except ValueError:
-        raise BackendError("Service returned invalid JSON") from None
+        raise BackendError(f"{service} returned invalid JSON") from None
 
 
 def embed(texts):
@@ -50,7 +50,7 @@ def embed(texts):
     if config.MEMORY_EMBEDDING_SEND_DIMENSIONS:
         payload["dimensions"] = config.MEMORY_EMBEDDING_DIMENSIONS
     data = request("POST", config.MEMORY_EMBEDDING_BASE_URL + "/embeddings",
-                   headers={"Authorization": "Bearer " + config.MEMORY_EMBEDDING_API_KEY}, json=payload)
+                   headers={"Authorization": "Bearer " + config.MEMORY_EMBEDDING_API_KEY}, json=payload, service="Embedding")
     try:
         rows = sorted(data["data"], key=lambda x: x["index"])
         if [r["index"] for r in rows] != list(range(len(texts))):
@@ -74,7 +74,7 @@ class Qdrant:
         self.headers = {"api-key": config.MEMORY_QDRANT_API_KEY} if config.MEMORY_QDRANT_API_KEY else {}
 
     def call(self, method, path="", **kwargs):
-        return request(method, self.url + path, headers=self.headers, **kwargs)
+        return request(method, self.url + path, headers=self.headers, service="Qdrant", **kwargs)
 
     def ensure(self):
         exists = self.call("GET", "/exists").get("result", {}).get("exists")

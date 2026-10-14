@@ -386,3 +386,17 @@ def test_configured_document_batches_are_independent(engine, monkeypatch):
     assert all(len(batch) == 1 for batch in batches)
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(MemoryDocument).where(MemoryDocument.vector_profile.is_not(None))) == 2
+
+
+def test_backend_errors_identify_service_without_exposing_secrets(monkeypatch):
+    import requests
+    def broken(*args, **kwargs):
+        raise requests.ConnectionError("secret-token https://private-endpoint")
+    monkeypatch.setattr(backends.requests, "request", broken)
+    monkeypatch.setattr(backends, "configured", lambda: True)
+    with pytest.raises(backends.BackendError) as embedding:
+        backends.embed(["synthetic text"])
+    assert str(embedding.value) == "Embedding unavailable (ConnectionError)"
+    with pytest.raises(backends.BackendError) as qdrant:
+        backends.Qdrant().ensure()
+    assert str(qdrant.value) == "Qdrant unavailable (ConnectionError)"
