@@ -24,7 +24,8 @@ def render_source(db, ident, as_of=None):
     data = doc.snapshot
     content = data.get("summary") or data.get("reasoning") or data.get("content") or data.get("details") or data.get("notes") or data.get("watch_reason")
     if content:
-        st.markdown(str(content))
+        from app.components.kline_chart import render_report
+        render_report(str(content), key_prefix=f"memory_{ident}", ui=st)
     with st.expander(t("memory.snapshot"), expanded=not bool(content)):
         st.json(data)
         if doc.previous:

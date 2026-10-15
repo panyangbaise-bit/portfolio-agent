@@ -172,10 +172,14 @@ def render_ask_agent_chat() -> None:
     if not messages and not pending:
         st.caption(t("ask_agent.empty_thread"))
 
-    for msg in messages:
+    for index, msg in enumerate(messages):
         role = msg.get("role") or "assistant"
         with st.chat_message("user" if role == "user" else "assistant"):
-            st.markdown(msg.get("content") or "")
+            if role == "user":
+                st.markdown(msg.get("content") or "")
+            else:
+                from app.components.kline_chart import render_report
+                render_report(msg.get("content") or "", key_prefix=f"chat_{index}", ui=st)
 
     finished_stream = False
     if pending:

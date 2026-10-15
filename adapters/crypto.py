@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pycoingecko import CoinGeckoAPI
 import requests
@@ -68,16 +68,18 @@ class CryptoAdapter(MarketAdapter):
         try:
             data = cg.get_coin_market_chart_by_id(id=coin_id, vs_currency="usd", days=days)
             prices = data.get("prices", [])
-            total_volumes = data.get("total_volumes", [])
-            return [
-                {
-                    "date": datetime.fromtimestamp(p[0] / 1000).strftime("%Y-%m-%d"),
-                    "price": p[1],
-                    "volume": total_volumes[i][1] if i < len(total_volumes) else None,
+            # Match by timestamp, not position. Keep the last UTC sample per day;
+            # market_chart supplies rolling 24h USD turnover, not candle volume.
+            volumes = dict(data.get("total_volumes", []))
+            daily = {}
+            for timestamp, price in sorted(prices):
+                date = datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime("%Y-%m-%d")
+                daily[date] = {
+                    "date": date, "price": price, "volume": volumes.get(timestamp),
+                    "series_kind": "price", "volume_unit": "usd",
+                    "volume_kind": "rolling_24h_turnover",
                 }
-                for i, p in enumerate(prices)
-                if i % max(1, len(prices) // 100) == 0
-            ]
+            return list(daily.values())
         except Exception:
             return []
 

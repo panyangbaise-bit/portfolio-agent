@@ -114,7 +114,8 @@ def render_monthly_summary():
         finally:
             session.close()
         if summary:
-            st.markdown(summary)
+            from app.components.kline_chart import render_report
+            render_report(summary, key_prefix="monthly", ui=st)
         else:
             st.caption(t("jobs.monthly.empty"))
 
@@ -259,7 +260,8 @@ def render_job_run_table(limit: int = 50):
             f" · {t('col.finished')}: {_fmt_time(run.ended_at)}"
         )
         if run.details:
-            st.markdown(run.details)
+            from app.components.kline_chart import render_report
+            render_report(run.details, key_prefix=f"run_{run.id}", ui=st)
         else:
             st.caption(t("jobs.runtime.no_details"))
 
@@ -337,7 +339,8 @@ def render_agent_session_detail(limit: int = 50):
     ])
     with summary_tab:
         if detail.get("summary"):
-            st.markdown(detail["summary"])
+            from app.components.kline_chart import render_report
+            render_report(detail["summary"], key_prefix=f"report_{selected_id}", ui=st)
         else:
             st.caption(t("jobs.detail.summary_empty"))
     with recs_tab:

@@ -25,6 +25,7 @@ from adapters.base import registry as adapter_registry
 from adapters.brave_search import brave_search
 from adapters.news import news_adapter
 from adapters.safe import error_payload
+from agent.kline import enrich_kline
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -322,12 +323,18 @@ def get_price(ticker: str, market: str) -> dict:
 
 
 @tool
-def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
+def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dict:
     """获取历史K线数据。支持单个和批量查询。
 
     单个: get_kline(ticker="AAPL", market="US", period="3mo")
     同市场批量: get_kline(ticker="AAPL,TSLA", market="US")
     跨市场批量: get_kline(ticker="AAPL,600519", market="US,CN")
+
+    每根含 volume、volume_ma5/10/20（含当日）、volume_ratio5（当日量/前5根均量，
+    非盘中量比）、volume_change_pct（较前一根量变化%）。不足窗口/缺失/零分母返回 null。
+    volume_unit: lot=手、share=股、usd=美元；volume_kind 区分成交量与滚动24小时成交额。
+    series_kind=nav 为净值线，price 为价格采样线，不可当作 OHLC；不跨市场比较原始量。
+    period 是回溯范围，日频数据。要在报告中画图，随后调用 annotate_kline(ticker=...)。
     """
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
     if not tickers:
@@ -337,14 +344,17 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict]:
         ad = adapters.get(tickers[0])
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
-        return _safe_invoke(lambda: ad.get_kline(tickers[0], period), empty=[])
+        item_market = next(m.strip() for m in market.split(",") if m.strip())
+        return _safe_invoke(lambda: enrich_kline(ad.get_kline(tickers[0], period), item_market), empty=[])
 
     def _one(t: str):
         ad = adapters.get(t)
         if ad is None:
             return t, []
         try:
-            return t, ad.get_kline(t, period)
+            markets = [m.strip().upper() for m in market.split(",") if m.strip()]
+            item_market = markets[min(tickers.index(t), len(markets) - 1)]
+            return t, enrich_kline(ad.get_kline(t, period), item_market)
         except Exception:
             return t, []
 
@@ -890,6 +900,7 @@ def save_recommendation(
 # ── Tool Collection ───────────────────────────────────────
 
 from memory.tools import search_memory, read_memory, get_instrument_timeline
+from agent.chart_tools import annotate_kline
 
 ALL_TOOLS = [
     search_memory, read_memory, get_instrument_timeline,
@@ -898,6 +909,7 @@ ALL_TOOLS = [
     get_holding,
     get_price,
     get_kline,
+    annotate_kline,
     get_financials,
     get_fund_info,
     get_market_snapshot,

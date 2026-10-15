@@ -1,5 +1,6 @@
 from concurrent.futures import TimeoutError as FuturesTimeout
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import threading
 import time
 from typing import List, Optional, Tuple
@@ -164,9 +165,13 @@ class CNMarketAdapter(MarketAdapter):
             return []
 
     def _get_stock_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
-        mapping = {"1mo": "monthly", "3mo": "quarterly", "6mo": "halfyear", "1y": "yearly", "5y": "yearly"}
-        freq = mapping.get(period, "daily")
-        df = ak.stock_zh_a_hist(symbol=ticker, period=freq, adjust="qfq")
+        days = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}.get(period, 90)
+        end = datetime.now(ZoneInfo("Asia/Shanghai"))
+        df = ak.stock_zh_a_hist(
+            symbol=ticker, period="daily", adjust="qfq",
+            start_date=(end - timedelta(days=days)).strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+        )
         if df.empty:
             return []
         return [
@@ -177,8 +182,11 @@ class CNMarketAdapter(MarketAdapter):
                 "low": float(row["最低"]),
                 "close": float(row["收盘"]),
                 "volume": float(row["成交量"]) if "成交量" in row else None,
+                "amount": float(row["成交额"]) if "成交额" in row else None,
+                "turnover_rate": float(row["换手率"]) if "换手率" in row else None,
+                "volume_unit": "lot",
             }
-            for _, row in df.tail(90).iterrows()
+            for _, row in df.iterrows()
         ]
 
     def _get_fund_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
@@ -196,6 +204,7 @@ class CNMarketAdapter(MarketAdapter):
                 "low": float(row["单位净值"]),
                 "close": float(row["单位净值"]),
                 "volume": None,
+                "series_kind": "nav",
             }
             for _, row in df.iterrows()
         ]

@@ -166,6 +166,16 @@ class AgentToolCall(Base):
         return f"<AgentToolCall(id={self.id}, tool='{self.tool_name}')>"
 
 
+class AnalysisChart(Base):
+    """Immutable report figure, including the exact tool-data snapshot."""
+    __tablename__ = "analysis_charts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("agent_sessions.id"), index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class Recommendation(Base):
     __tablename__ = "recommendations"
     __table_args__ = (

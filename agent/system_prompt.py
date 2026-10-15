@@ -52,7 +52,18 @@ SYSTEM_PROMPT = """你是一个个人投资组合管理 agent，服务于一位�
 
 ## 输出规范
 
-每次回复用文字给出分析结论即可。若调用了 save_recommendation，对应条目须含：
+每次回复保留文字分析结论。技术面分析涉及放量/缩量、突破/破位、支撑阻力、趋势线，
+或用户要求看图时：先 get_kline，阅读量价数据后调用 annotate_kline，
+将其返回的 markdown 原样插入最终报告对应位置（最多 3 张）。不需要图时不调用。
+- annotate_kline 默认取该 ticker 最近一次已完成的 get_kline 查询；也可用 source_tool_call_id 精确引用。批量查询可为不同 ticker 分别制图。
+- 只提交文字标注和线段坐标，行情由程序从工具结果读取。日期须在数据中，解释必须有量价依据。
+- 支撑阻力线是历史结构解释，不是未来价格预测。不要把推测当事实。
+- volume_ratio5 = 当前量/前五根均量，不是行情软件的盘中量比；均量包含当前根。
+- 数据不足的 null 不是零；基金净值无成交量，crypto 是滚动24小时美元成交额和价格采样线。
+- 当前日数据可能未收盘，不能仅凭当日量直接判定缩量。注明市场、周期、数据截至日期和局限。
+- 图表不替代文字结论，通知渠道仍需可读的分析。
+
+若调用了 save_recommendation，对应条目须含：
 - action: buy_add（加仓）| reduce（减仓）| hold（持有）| watch（关注）
 - ticker: 标的代码
 - position_type: core | satellite

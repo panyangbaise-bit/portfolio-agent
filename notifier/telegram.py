@@ -36,6 +36,11 @@ def _md_to_telegram_html(text: str) -> str:
     Tables, headings, and horizontal rules have no HTML equivalent so we
     reformat them into readable alternatives.
     """
+    # Interactive chart references are only meaningful in the report UI.
+    text = re.sub(
+        r"^```kline\s*\n.*?\n```[ \t]*$",
+        "[标注行情图请在报告页面查看]", text, flags=re.MULTILINE | re.DOTALL,
+    )
     # --- 1. Code blocks (``` ... ```) — convert to <pre> ---
     text = re.sub(r"```(\w*)\n?(.*?)```", r"<pre>\2</pre>", text, flags=re.DOTALL)
 

@@ -54,6 +54,8 @@ def _prepare_tool_args(tool_name: str, args: dict, state: dict) -> dict:
     prepared = dict(args)
     if tool_name == "save_recommendation":
         prepared["session_id"] = state.get("session_id") or 0
+    if tool_name == "annotate_kline":
+        prepared["state"] = state
     return prepared
 
 

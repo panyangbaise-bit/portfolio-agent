@@ -6,6 +6,16 @@ import streamlit as st
 
 
 _EN = {
+    "chart.ohlc": "Candles", "chart.nav": "NAV", "chart.price": "Sampled price",
+    "chart.volume": "Volume", "chart.turnover": "Rolling 24h turnover",
+    "chart.lot": "lots (100 shares)", "chart.share": "shares", "chart.usd": "USD",
+    "chart.unknown_unit": "provider units",
+    "chart.snapshot": "{ticker} · {market} · {period} · {start} – {end} · Saved snapshot",
+    "chart.note": "Red: up · Green: down. VMA includes the current bar. Latest bar may be incomplete. Labels and lines are Agent analysis. Use the camera button to save PNG.",
+    "chart.nav_note": "NAV series; OHLC and trading volume are unavailable.",
+    "chart.crypto_note": "Last UTC price sample per day; volume is rolling 24h USD turnover, not daily candle volume.",
+    "chart.no_volume": "Volume is unavailable for this series.",
+    "chart.unavailable": "Chart unavailable. The report text remains available.",
     "action.dismiss": "Dismissed",
     "action.accept": "Accepted",
     "memory.importing": "Historical import is in progress. Search coverage is still growing.",
@@ -348,6 +358,16 @@ _EN = {
 
 _ZH = {
     **_EN,
+    "chart.ohlc": "K线", "chart.nav": "净值", "chart.price": "价格采样",
+    "chart.volume": "成交量", "chart.turnover": "滚动24小时成交额",
+    "chart.lot": "手（100股）", "chart.share": "股", "chart.usd": "美元",
+    "chart.unknown_unit": "数据源单位",
+    "chart.snapshot": "{ticker} · {market} · {period} · {start} 至 {end} · 已保存快照",
+    "chart.note": "红涨绿跌；均量包含当前根，最新一根可能未收盘。文字与划线为 Agent 分析。点击相机按钮下载 PNG。",
+    "chart.nav_note": "净值序列，无真实开高低收及成交量。",
+    "chart.crypto_note": "每日最后一个 UTC 价格采样；量为滚动24小时美元成交额，并非日K成交量。",
+    "chart.no_volume": "此序列暂无成交量数据。",
+    "chart.unavailable": "图表暂不可用，报告文字仍可阅读。",
     "action.dismiss": "已拒绝",
     "action.accept": "已接受",
     "memory.importing": "历史记录正在导入，搜索覆盖范围会逐步增加。",
