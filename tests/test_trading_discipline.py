@@ -43,9 +43,8 @@ def test_memo_ui_saves_and_restores_rules_on_new_page_session(monkeypatch):
     source = "from app.components.trading_discipline import render_trading_discipline\nrender_trading_discipline()"
     app = AppTest.from_string(source).run()
     assert not app.exception
-    app.text_area[0].set_value("每次开仓先确定止损。")
-    app.button[0].click().run()
+    assert len(app.button) == 0
+    app.text_area[0].set_value("每次开仓先确定止损。").run()
     assert not app.exception
-    assert len(app.success) == 1
     fresh = AppTest.from_string(source).run()
     assert fresh.text_area[0].value == "每次开仓先确定止损。"

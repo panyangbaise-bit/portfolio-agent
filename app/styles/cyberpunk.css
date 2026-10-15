@@ -500,9 +500,12 @@ a.pa-locale-toggle:hover { color: #0000ff; border-color: #0000ff; }
   border: 1px solid #000000;
   border-radius: 0;
 }
-.st-key-trading_discipline_panel [data-testid="stForm"] {
-  border: none !important;
-  padding: 0 !important;
+.st-key-trading_discipline_panel [data-testid="InputInstructions"] {
+  display: none !important;
+}
+.st-key-trading_discipline_panel textarea {
+  resize: none !important;
+  overflow-y: hidden !important;
 }
 button[kind^="primary"] p, button[data-testid="baseButton-primary"] p {
   color: #ffffff !important;
