@@ -6,6 +6,8 @@ An AI portfolio OS for **US / China A-share / Hong Kong / crypto** holdings. A l
 
 Open locally at [http://localhost:8501](http://localhost:8501) after `./run.sh`.
 
+New reports include numbered source citations such as `[1]`: hover for the retrieved title and summary, and click to open the source. Repeated sources reuse their number, and links survive report history and Telegram delivery. Citations use retrieved news and web results; older reports are not retroactively annotated.
+
 ## Screenshots
 
 Captured from the running app (`http://127.0.0.1:8501`, English UI).

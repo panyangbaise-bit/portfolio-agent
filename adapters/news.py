@@ -91,10 +91,21 @@ class WallStreetCNAdapter:
             if resource is None:
                 continue
             ts = resource.get("display_time", 0)
+            # The API may return an absolute URI, a relative path or an article ID.
+            # Preserve real URLs instead of prefixing an already complete URI.
+            uri = str(resource.get("url") or resource.get("uri") or "").strip()
+            if uri.startswith(("https://", "http://")):
+                article_url = uri
+            elif uri.startswith("/articles/"):
+                article_url = "https://wallstreetcn.com" + uri
+            elif uri.isdigit():
+                article_url = "https://wallstreetcn.com/articles/" + uri
+            else:
+                article_url = ""
             parsed.append({
                 "title": resource.get("title", ""),
                 "uri": resource.get("uri", ""),
-                "url": f"https://wallstreetcn.com/articles/{resource.get('uri', '')}" if resource.get("uri") else "",
+                "url": article_url,
                 "summary": (resource.get("content_short") or "")[:200],
                 "published_at": datetime.fromtimestamp(ts).isoformat() if ts else None,
                 "author": (resource.get("author") or {}).get("display_name", ""),

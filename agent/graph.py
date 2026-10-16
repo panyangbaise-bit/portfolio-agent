@@ -9,6 +9,7 @@ Defines the ReAct-style agent loop:
 Uses DeepSeek API via ChatOpenAI (OpenAI-compatible interface).
 """
 
+import json
 from typing import Annotated, Any, Optional
 
 from typing_extensions import NotRequired, TypedDict
@@ -17,6 +18,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 
 from agent.llm import build_deepseek_llm
+from agent.citations import SOURCE_TOOLS, annotate_sources, resolve_citations
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tool_guards import execute_tool_calls
 from agent.tools import ALL_TOOLS
@@ -36,6 +38,7 @@ class AgentState(TypedDict):
     tool_loop_halted: NotRequired[bool]
     # Count of tool-enabled LLM rounds completed in this invoke.
     agent_rounds: NotRequired[int]
+    citation_sources: NotRequired[dict]
 
 
 def _truncate_result(text: Any) -> Optional[str]:
@@ -139,20 +142,42 @@ def build_agent_graph() -> StateGraph:
         # synthesis without tools so the last tool results are not dropped.
         if rounds >= max_rounds:
             response = llm.invoke(messages)
+            response = response.model_copy(update={"content": resolve_citations(
+                response.content, state.get("citation_sources") or {},
+            )})
             return {
                 "messages": [response],
                 "tool_loop_halted": True,
             }
 
         response = llm_with_tools.invoke(messages)
+        if not response.tool_calls:
+            response = response.model_copy(update={"content": resolve_citations(
+                response.content, state.get("citation_sources") or {},
+            )})
         return {"messages": [response], "agent_rounds": rounds + 1}
 
     def tools_node(state: AgentState) -> dict:
         """Execute tools with timeout + loop guard, then persist call logs."""
         result = execute_tool_calls(state, ALL_TOOLS)
         tool_messages = result.get("messages") or []
+        sources = dict(state.get("citation_sources") or {})
+        annotated = []
+        for message in tool_messages:
+            if message.name in SOURCE_TOOLS and isinstance(message.content, str):
+                try:
+                    payload = json.loads(message.content)
+                except (ValueError, TypeError):
+                    pass
+                else:
+                    payload = annotate_sources(payload, sources)
+                    message = message.model_copy(update={
+                        "content": json.dumps(payload, ensure_ascii=False),
+                    })
+            annotated.append(message)
+        tool_messages = annotated
         _persist_tool_calls(state, tool_messages)
-        out = {"messages": tool_messages}
+        out = {"messages": tool_messages, "citation_sources": sources}
         if result.get("tool_loop_halted"):
             out["tool_loop_halted"] = True
         return out

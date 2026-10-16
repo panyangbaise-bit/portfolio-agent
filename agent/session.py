@@ -129,4 +129,8 @@ class AgentSessionManager:
             lines.append(f"- [{tag}] [{ts}] {title}")
             if summary:
                 lines.append(f"  摘要: {summary}")
+            if item.get("url"):
+                lines.append(f"  链接: {item['url']}")
+            if item.get("citation"):
+                lines.append(f"  引用: {item['citation']}")
         return "\n".join(lines)

@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover
     from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
 from agent.graph import agent_graph
+from agent.citations import annotate_sources
 from agent.session import AgentSessionManager
 from agent.system_prompt import (
     AFTER_MARKET_PROMPT_EXTRA,
@@ -111,7 +112,9 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
     )
     session.start()
 
-    summary = session.snapshot_news_for_context(news_items)
+    citation_sources = {}
+    cited_news = annotate_sources(news_items[:20], citation_sources)
+    summary = session.snapshot_news_for_context(cited_news)
     context = NEWS_TRIGGER_PROMPT_EXTRA.format(news_summary=summary)
     message = HumanMessage(
         content=(
@@ -125,6 +128,7 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         "session_id": session.session_id,
         "triggered_by": "event",
         "extra_context": context,
+        "citation_sources": citation_sources,
     })
 
     last_msg = result["messages"][-1]

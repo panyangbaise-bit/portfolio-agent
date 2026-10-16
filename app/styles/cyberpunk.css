@@ -545,3 +545,23 @@ button[kind^="primary"] p, button[data-testid="baseButton-primary"] p {
   .st-key-jobs_section [role="radiogroup"] { gap: 0.15rem; }
   .st-key-jobs_section label { padding: 0.4rem 0.45rem; }
 }
+/* Numbered report sources use safe Markdown links with native hover summaries. */
+[data-testid="stMarkdownContainer"] a[title^="["] {
+  display: inline-block;
+  padding: 0 0.28em;
+  margin: 0 0.12em;
+  border-radius: 4px;
+  background: rgba(0, 0, 255, 0.06);
+  color: var(--cp-cyan);
+  font-size: 0.8em;
+  font-weight: 600;
+  text-decoration: none;
+  vertical-align: super;
+  line-height: 1.5;
+}
+[data-testid="stMarkdownContainer"] a[title^="["]:hover,
+[data-testid="stMarkdownContainer"] a[title^="["]:focus-visible {
+  background: rgba(0, 0, 255, 0.12);
+  text-decoration: underline;
+  outline: 1px solid var(--cp-cyan);
+}

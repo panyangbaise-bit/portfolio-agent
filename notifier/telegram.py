@@ -1,6 +1,7 @@
 """Telegram Bot notification sender."""
 
 import logging
+from html import escape, unescape
 import re
 import threading
 import time
@@ -36,6 +37,23 @@ def _md_to_telegram_html(text: str) -> str:
     Tables, headings, and horizontal rules have no HTML equivalent so we
     reformat them into readable alternatives.
     """
+    # Protect generated citations from the legacy emphasis/link substitutions.
+    # Telegram has no hover titles, but the same source number remains clickable.
+    from agent.citations import safe_source_url
+    citations = []
+
+    def citation_link(match):
+        number, raw_url = match.group(1), match.group(2)
+        url = safe_source_url(unescape(raw_url))
+        if not url:
+            return f"[{number}]"
+        placeholder = f"PACITATIONTOKEN{len(citations)}END"
+        citations.append(f'<a href="{escape(url, quote=True)}">[{number}]</a>')
+        return placeholder
+
+    text = re.sub(
+        r'\[\\\[(\d+)\\\]\]\(<([^>]+)> "[^"\n]*"\)', citation_link, text,
+    )
     # Interactive chart references are only meaningful in the report UI.
     text = re.sub(
         r"^```kline\s*\n.*?\n```[ \t]*$",
@@ -94,6 +112,8 @@ def _md_to_telegram_html(text: str) -> str:
     # Remove stray | that aren't in HTML tags (leftover from table conversion)
     # Actually, keep them — they may be intentional separators.
 
+    for index, citation in enumerate(citations):
+        text = text.replace(f"PACITATIONTOKEN{index}END", citation)
     return text
 
 
