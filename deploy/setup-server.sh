@@ -12,6 +12,7 @@
 #   BRANCH=main
 #   SERVICE_USER=admin
 #   SKIP_START=1
+#   SETUP_A2A=0  # Skip automatic A2A configuration; preserve current settings.
 
 set -euo pipefail
 
@@ -19,6 +20,7 @@ APP_DIR="${APP_DIR:-/opt/portfolio-agent}"
 REPO_URL="${REPO_URL:-https://github.com/panyangbaise-bit/portfolio-agent.git}"
 BRANCH="${BRANCH:-main}"
 SKIP_START="${SKIP_START:-0}"
+SETUP_A2A="${SETUP_A2A:-1}"
 SERVICE_NAME="portfolio-agent"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -155,6 +157,15 @@ setup_env_file() {
   sed -i 's/^AUTH_ENABLED=.*/AUTH_ENABLED=true/' "${APP_DIR}/.env"
 }
 
+setup_a2a() {
+  if [[ "${SETUP_A2A}" == "0" ]]; then
+    log "跳过 A2A 自动配置（保留当前设置）"
+    return
+  fi
+  log "启用 A2A，自动生成或保留访问密钥；不更改 Actions 设置"
+  "${APP_DIR}/.venv/bin/python3" "${APP_DIR}/deploy/configure-external-api.py" --a2a-only
+}
+
 fix_ownership() {
   local user="$1"
   local group
@@ -227,6 +238,10 @@ print_next_steps() {
   echo "  3) 查看日志：  journalctl -u ${SERVICE_NAME} -f"
   echo "  4) 访问地址：  http://${ip:-YOUR_SERVER_IP}:8501"
   echo "  5) 云安全组 / ufw 放行 8501（以及 22）"
+  echo "  6) UI 与已启用的 A2A 由同一服务启动，无需另开进程"
+  echo "     默认 A2A：127.0.0.1:8502（已有地址/端口配置会保留）"
+  echo "     无域名接入：公网 IP + token 或 SSH 隧道，详见 docs/agent-interfaces.md"
+  echo "     A2A_TOKEN 已保存在 .env，未输出到部署日志"
   echo
 }
 
@@ -243,6 +258,7 @@ main() {
   sync_app_code
   setup_venv
   setup_env_file
+  setup_a2a
   fix_ownership "${user}"
   install_systemd_unit "${user}"
   print_next_steps

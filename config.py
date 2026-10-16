@@ -96,6 +96,10 @@ class Config:
     A2A_PORT: int = int(os.environ.get("A2A_PORT", "8502"))
     A2A_TOKEN: str = os.environ.get("A2A_TOKEN", "")
     A2A_PUBLIC_URL: str = os.environ.get("A2A_PUBLIC_URL", "")
+    A2A_HOST: str = os.environ.get("A2A_HOST", "127.0.0.1")
+    ACTIONS_ENABLED: bool = os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    ACTIONS_TOKEN: str = os.environ.get("ACTIONS_TOKEN", "")
+    ACTIONS_PUBLIC_URL: str = os.environ.get("ACTIONS_PUBLIC_URL", "")
 
     # News API
     WALLSTREETCN_BASE_URL: str = "https://api-one-wscn.awtmt.com/apiv1"

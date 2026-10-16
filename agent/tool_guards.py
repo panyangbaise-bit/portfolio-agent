@@ -7,6 +7,7 @@ from langchain_core.messages import ToolMessage
 
 from adapters.call_timeout import run_with_timeout_or_flag
 from config import config
+from agent.access import READ_ONLY_TOOLS
 
 
 def tool_call_fingerprint(name: str, args: Any) -> str:
@@ -128,6 +129,12 @@ def execute_tool_calls(
 
     for tc in ai_msg.tool_calls:
         name, args, tc_id = _tool_call_parts(tc)
+        if state.get("read_only") and name not in READ_ONLY_TOOLS:
+            out_messages.append(ToolMessage(
+                content=_serialize_tool_result({"error": "read_only", "message": "External queries cannot execute this tool."}),
+                tool_call_id=tc_id or "", name=name,
+            ))
+            continue
         fp = tool_call_fingerprint(name, args)
         prior = count_fingerprint_in_messages(history, fp) + batch_counts.get(fp, 0)
         attempt = prior + 1

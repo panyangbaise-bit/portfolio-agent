@@ -371,6 +371,7 @@ def run_ad_hoc_query_stream(
     session_id: Optional[int] = None,
     job_id: str = "ask_agent",
     triggered_by: str = "manual",
+    read_only: bool = False,
 ) -> Iterator[Dict[str, Any]]:
     """Stream Ask Agent progress for the floating chat (status + token events).
 
@@ -411,11 +412,13 @@ def run_ad_hoc_query_stream(
         elif role == "assistant":
             prior.append(AIMessage(content=content))
 
+    from agent.access import EXTERNAL_QUERY_CONTEXT
     state = {
         "messages": prior + [HumanMessage(content=question)],
         "session_id": session.session_id,
         "triggered_by": triggered_by,
-        "extra_context": "",
+        "extra_context": EXTERNAL_QUERY_CONTEXT if read_only else "",
+        "read_only": read_only,
     }
 
     timeout = float(config.AGENT_RUN_TIMEOUT)

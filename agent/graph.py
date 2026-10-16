@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 
 from agent.llm import build_deepseek_llm
 from agent.citations import SOURCE_TOOLS, annotate_sources, resolve_citations
+from agent.access import READ_ONLY_TOOLS
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tool_guards import execute_tool_calls
 from agent.tools import ALL_TOOLS
@@ -39,6 +40,7 @@ class AgentState(TypedDict):
     # Count of tool-enabled LLM rounds completed in this invoke.
     agent_rounds: NotRequired[int]
     citation_sources: NotRequired[dict]
+    read_only: NotRequired[bool]
 
 
 def _truncate_result(text: Any) -> Optional[str]:
@@ -118,6 +120,7 @@ def build_agent_graph() -> StateGraph:
 
     llm = build_deepseek_llm()
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
+    llm_read_only = llm.bind_tools([tool for tool in ALL_TOOLS if tool.name in READ_ONLY_TOOLS])
 
     def agent_node(state: AgentState) -> dict:
         """Agent reasoning node. Calls the LLM with tools bound."""
@@ -150,7 +153,8 @@ def build_agent_graph() -> StateGraph:
                 "tool_loop_halted": True,
             }
 
-        response = llm_with_tools.invoke(messages)
+        model = llm_read_only if state.get("read_only") else llm_with_tools
+        response = model.invoke(messages)
         if not response.tool_calls:
             response = response.model_copy(update={"content": resolve_citations(
                 response.content, state.get("citation_sources") or {},

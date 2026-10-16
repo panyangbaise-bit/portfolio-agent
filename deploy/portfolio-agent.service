@@ -1,5 +1,5 @@
 [Unit]
-Description=Portfolio Agent (Streamlit + APScheduler)
+Description=Portfolio Agent (Streamlit + A2A + APScheduler)
 After=network-online.target
 Wants=network-online.target
 

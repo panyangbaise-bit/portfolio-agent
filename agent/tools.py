@@ -899,10 +899,33 @@ def save_recommendation(
 
 # ── Tool Collection ───────────────────────────────────────
 
+@tool
+def query_portfolio_ledger(
+    operation: str, ticker: Optional[str] = None, market: Optional[str] = None,
+    start_date: Optional[str] = None, end_date: Optional[str] = None,
+    action: Optional[str] = None, status: Optional[str] = None,
+    limit: int = 25, offset: int = 0,
+) -> dict:
+    """只读查询账本。operation 为 holdings 或 transactions，无需行情请求。
+
+    holdings 默认查询未平仓，可传 status=open/closed/all。
+    transactions 可按 ticker、market、action=buy/sell、start_date/end_date
+    (YYYY-MM-DD，含首尾 UTC 日) 筛选。返回币种、成本/成交价和分页 next_offset；
+    这些不是实时市值或总收益。失败返回 error，不能当成没有记录。
+    """
+    from a2a.queries import read_query
+    params = {"ticker": ticker, "market": market, "limit": limit, "offset": offset}
+    if operation == "holdings":
+        params["status"] = status
+    else:
+        params.update(start_date=start_date, end_date=end_date, action=action)
+    return _safe_invoke(lambda: read_query(operation, params))
+
 from memory.tools import search_memory, read_memory, get_instrument_timeline
 from agent.chart_tools import annotate_kline
 
 ALL_TOOLS = [
+    query_portfolio_ledger,
     search_memory, read_memory, get_instrument_timeline,
     get_portfolio,
     get_return_summary,

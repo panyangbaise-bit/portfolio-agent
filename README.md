@@ -8,6 +8,8 @@ Open locally at [http://localhost:8501](http://localhost:8501) after `./run.sh`.
 
 New reports include numbered source citations such as `[1]`: hover for the retrieved title and summary, and click to open the source. Repeated sources reuse their number, and links survive report history and Telegram delivery. Citations use retrieved news and web results; older reports are not retroactively annotated.
 
+External agents can query holdings, transactions, and analysis through **A2A + MCP** or **ChatGPT Custom GPT Actions**. Both interfaces enforce read-only access. See the [integration and deployment guide](docs/agent-interfaces.md) for the pinned bridge installer, integration tests, OpenAPI schema, and HTTPS deployment steps.
+
 ## Screenshots
 
 Captured from the running app (`http://127.0.0.1:8501`, English UI).
@@ -88,6 +90,8 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 ## Deploy on Ubuntu
 
 One-shot install (venv + systemd):
+
+The installer also enables A2A and generates a private token, preserving existing tokens and endpoints. UI and A2A run in the same service. Without a domain, configure public IP access with a shared token (HTTP is unencrypted), or use an SSH tunnel. A2A defaults to loopback port 8502. See the [deployment guide](docs/agent-interfaces.md).
 
 ```bash
 sudo apt update && sudo apt install -y git

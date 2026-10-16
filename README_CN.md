@@ -10,6 +10,8 @@ K 线工具现支持成交量、5/10/20 根均量和放缩量倍数；Agent 可�
 
 新报告支持来源引用：新闻和网页事实旁显示 `[1]`、`[2]` 等编号，鼠标悬停可查看来源标题与摘要，点击打开原文。同一来源重复引用沿用编号，历史记录和 Telegram 通知保留链接。引用来自实际检索结果；没有网页来源的行情和持仓数据注明工具与日期，旧报告不会自动补造引用。
 
+支持其他 agent 通过 **A2A + MCP** 只读查询持仓、交易与组合分析，也提供 **ChatGPT Custom GPT Actions** 接口。包含本地桥接器安装、真实联调脚本、OpenAPI 和阿里云 HTTPS 部署步骤，见 [Agent 交互接入指南](docs/agent-interfaces.md)。
+
 ## 界面展示
 
 截图来自正在运行的产品页（`http://127.0.0.1:8501`，英文界面；右上角 **EN / CN** 可切换中文）。
@@ -101,6 +103,8 @@ sudo systemctl restart portfolio-agent
 ```
 
 访问 `http://你的服务器IP:8501`。日志：`journalctl -u portfolio-agent -f`。
+
+部署脚本会自动启用 A2A、生成并保留访问密钥，UI 和 A2A 随同一个服务启动及开机自启。没有域名时，可配置公网 IP + 相同 token 直连，或使用 SSH 隧道，见 [无域名接入步骤](docs/agent-interfaces.md#无域名最简部署ui--a2a)。A2A 默认监听回环地址，公网直连需改为 `0.0.0.0` 并放行 8502；HTTP 直连不加密。无需单独启动 A2A，也无需开启 ChatGPT Actions。
 
 ## 使用方法
 
