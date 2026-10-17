@@ -1,5 +1,5 @@
 # UI
-streamlit>=1.50.0
+streamlit[auth]>=1.66.0,<2
 plotly>=5.24,<7
 
 # Agent
@@ -26,3 +26,4 @@ python-telegram-bot>=20.0
 # Config
 python-dotenv>=1.0.0
 pyyaml>=6.0
+tomlkit>=0.13,<1

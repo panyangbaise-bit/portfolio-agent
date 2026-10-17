@@ -82,12 +82,12 @@ class Config:
     # Default Beijing time. Override with e.g. APP_TIMEZONE=America/New_York
     APP_TIMEZONE: str = os.environ.get("APP_TIMEZONE", "Asia/Shanghai")
 
-    # Public access gate (password never exposed to clients except typed form input)
-    AUTH_ENABLED: bool = os.environ.get("AUTH_ENABLED", "false").lower() in (
-        "1", "true", "yes", "on",
+    # Google login is fail-closed by default; disable only for local development.
+    # OAuth client/cookie secrets live in .streamlit/secrets.toml.
+    AUTH_ENABLED: bool = os.environ.get("AUTH_ENABLED", "true").strip().lower() not in (
+        "0", "false", "no", "off",
     )
-    AUTH_PASSWORD: str = os.environ.get("AUTH_PASSWORD", "")
-    AUTH_MAX_FAILURES: int = int(os.environ.get("AUTH_MAX_FAILURES", "3"))
+    AUTH_ALLOWED_EMAILS: str = os.environ.get("AUTH_ALLOWED_EMAILS", "")
 
     # A2A server (optional). Off unless A2A_ENABLED=true and A2A_TOKEN is set.
     A2A_ENABLED: bool = os.environ.get("A2A_ENABLED", "false").lower() in (

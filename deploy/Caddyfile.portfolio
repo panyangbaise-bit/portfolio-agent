@@ -1,0 +1,26 @@
+# Shared HTTPS origin for the Streamlit UI and A2A. Keep the upstreams local.
+portfolio.panyang666.com {
+    @a2a path /.well-known/agent-card.json /a2a/v1 /a2a/v1/*
+    handle @a2a {
+        request_body {
+            max_size 100KB
+        }
+        reverse_proxy 127.0.0.1:8502
+    }
+
+    # Legacy A2A 0.3 sends JSON-RPC to POST /; GET / remains the UI.
+    @a2a_legacy {
+        method POST
+        path /
+    }
+    handle @a2a_legacy {
+        request_body {
+            max_size 100KB
+        }
+        reverse_proxy 127.0.0.1:8502
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8501
+    }
+}

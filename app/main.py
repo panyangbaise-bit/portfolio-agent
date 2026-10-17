@@ -17,7 +17,7 @@ from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
 from adapters.crypto import CryptoAdapter
 from scheduler.cron import start_scheduler, stop_scheduler
 from notifier.telegram import send_welcome
-from app.auth import require_auth
+from app.auth import require_auth, render_account_menu
 from app.i18n import t
 from app.styles.theme import inject_cyberpunk_theme, inject_locale_toggle
 
@@ -99,18 +99,17 @@ st.set_page_config(
 )
 inject_cyberpunk_theme()
 
-# Always call init(); process lock makes it a no-op after first real start.
-init()
-
 _sync_locale_from_query()
 inject_locale_toggle(st.session_state["locale"])
 
-# Optional password gate before any app UI (toggle via AUTH_ENABLED).
+# Authenticate before initializing app subsystems or rendering private pages.
 require_auth()
+init()
 
 st.sidebar.markdown('<div class="pa-brand-mark">P<span> / </span>A</div>', unsafe_allow_html=True)
 st.sidebar.title(t("app.title"))
 st.sidebar.caption(t("app.tagline"))
+render_account_menu()
 st.sidebar.divider()
 
 # Views live in app/views/ (NOT app/pages/) so Streamlit won't auto-add multipage tabs.

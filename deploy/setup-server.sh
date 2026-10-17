@@ -90,11 +90,12 @@ rsync_repo_to_app_dir() {
       --exclude 'portfolio.db' \
       --exclude 'data/ip_blacklist.json' \
       --exclude '.env' \
+      --exclude '.streamlit/secrets.toml' \
       "${REPO_ROOT}/" "${APP_DIR}/"
   else
     tar -C "${REPO_ROOT}" \
       --exclude='.venv' --exclude='.git' --exclude='portfolio.db' \
-      --exclude='data/ip_blacklist.json' --exclude='.env' \
+      --exclude='data/ip_blacklist.json' --exclude='.env' --exclude='.streamlit/secrets.toml' \
       -cf - . | tar -C "${APP_DIR}" -xf -
   fi
 }
@@ -151,9 +152,9 @@ setup_env_file() {
     log "已存在 .env，保留不覆盖"
     return
   fi
-  log "从 .env.example 生成 .env（请编辑密钥与 AUTH_PASSWORD）"
+  log "从 .env.example 生成 .env（请编辑模型密钥并配置 Google 登录）"
   cp "${APP_DIR}/.env.example" "${APP_DIR}/.env"
-  # First-time public deploy defaults (operator should set AUTH_PASSWORD).
+  # First-time public deploy stays locked until Google login is configured.
   sed -i 's/^AUTH_ENABLED=.*/AUTH_ENABLED=true/' "${APP_DIR}/.env"
 }
 
@@ -174,6 +175,9 @@ fix_ownership() {
   chown -R "${user}:${group}" "${APP_DIR}"
   # Keep .env private.
   chmod 600 "${APP_DIR}/.env" || true
+  if [[ -f "${APP_DIR}/.streamlit/secrets.toml" ]]; then
+    chmod 600 "${APP_DIR}/.streamlit/secrets.toml"
+  fi
 }
 
 install_systemd_unit() {
@@ -228,16 +232,15 @@ notify_deploy_success() {
 }
 
 print_next_steps() {
-  local ip
-  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo
   log "部署完成。"
   echo "  1) 编辑配置：  sudo nano ${APP_DIR}/.env"
-  echo "     必填 DEEPSEEK_API_KEY；公网务必设置 AUTH_PASSWORD"
+  echo "     必填 DEEPSEEK_API_KEY；公网保持 AUTH_ENABLED=true"
+  echo "     Google 登录：${APP_DIR}/.venv/bin/python ${APP_DIR}/deploy/configure-google-auth.py"
   echo "  2) 重启服务：  sudo systemctl restart ${SERVICE_NAME}"
   echo "  3) 查看日志：  journalctl -u ${SERVICE_NAME} -f"
-  echo "  4) 访问地址：  http://${ip:-YOUR_SERVER_IP}:8501"
-  echo "  5) 云安全组 / ufw 放行 8501（以及 22）"
+  echo "  4) 配置 HTTPS 域名及 Google 回调地址，详见 docs/google-login.md"
+  echo "  5) 云安全组 / ufw 放行 80、443 和 SSH；关闭公网 8501、8502"
   echo "  6) UI 与已启用的 A2A 由同一服务启动，无需另开进程"
   echo "     默认 A2A：127.0.0.1:8502（已有地址/端口配置会保留）"
   echo "     无域名接入：公网 IP + token 或 SSH 隧道，详见 docs/agent-interfaces.md"

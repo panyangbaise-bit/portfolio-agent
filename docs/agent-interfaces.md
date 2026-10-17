@@ -2,11 +2,48 @@
 
 Portfolio Agent 提供两条访问同一份账本的通道：其他 agent 通过 A2A 查询，ChatGPT Custom GPT 通过 Actions 查询。两者都可读取持仓、成交记录，并发起带上下文的自然语言分析。外部请求只读；模型工具列表和工具执行层都会阻止修改持仓、交易、关注列表和建议。分析会保存会话及工具调用审计，行情查询可能更新缓存。
 
-本次仅完成本地安装和验证，没有修改 `47.85.190.120`。ChatGPT 中的 GPT 尚未创建，手机端尚未联调。
+## 共用 HTTPS 域名：UI + A2A（推荐）
+
+使用 `https://portfolio.panyang666.com`，无需额外 DNS 记录或证书。Caddy 按路径转发：网页到本机 8501，A2A 到本机 8502；A2A 继续使用现有 Bearer token，不依赖网页登录。新增配置文件不代表服务器已经部署。
+
+服务器 `/opt/portfolio-agent/.env` 修改以下字段，保留原来的 `A2A_TOKEN` 和其他配置：
+
+```dotenv
+A2A_ENABLED=true
+A2A_HOST=127.0.0.1
+A2A_PORT=8502
+A2A_PUBLIC_URL=https://portfolio.panyang666.com
+```
+
+把 [deploy/Caddyfile.portfolio](../deploy/Caddyfile.portfolio) 的内容放到 `/etc/caddy/conf.d/portfolio.caddy`，替换该域名原来的配置。主 `/etc/caddy/Caddyfile` 必须已包含 `import /etc/caddy/conf.d/*.caddy`，同一域名只定义一次。不要使用 `handle_path`，它会剥离 A2A 所需的路径。此配置同时支持 A2A 1.0 和旧版 0.3，不公开 Actions 路由。
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+# 仅在 validate 成功后执行：
+sudo systemctl reload caddy
+sudo systemctl restart portfolio-agent
+curl --fail --show-error https://portfolio.panyang666.com/a2a/v1/.well-known/agent-card.json
+curl --silent --show-error -o /dev/null -w '%{http_code}\n' \
+  -X POST https://portfolio.panyang666.com/a2a/v1 \
+  -H 'Content-Type: application/json' --data '{}'
+```
+
+Agent Card 的 `supportedInterfaces[0].url` 应为 `https://portfolio.panyang666.com/a2a/v1`；第二个请求未带 token，应返回 **401**。如果返回 HTML，说明请求仍然转发到 UI。若返回 502，检查 A2A 是否在本机 8502 运行。
+
+HTTPS 验证成功后，在本机项目目录更新桥接器：
+
+```bash
+.venv/bin/python deploy/install-a2a-mcp.py --base-url https://portfolio.panyang666.com --codex
+node deploy/test-a2a-mcp.mjs
+```
+
+重新连接 Codex MCP 或重启客户端，已运行的桥接进程才会加载新地址。此命令启用 `requireHttps`，本机 `.env` 中的 token 保持不变。确认网页和 MCP 查询正常后，删除阿里云防火墙的公网 TCP 8501、8502 放行规则，保留 80、443 以及管理服务器所需的 SSH 规则。应用仍需在服务器内部运行这两个端口。
+
+若需回退，在服务器恢复修改前的 `.env` 和 Caddy 配置，然后重新验证、重载 Caddy 并重启应用；本机桥接器也需恢复匹配的地址。
 
 ## 无域名最简部署：UI + A2A
 
-服务器只需运行一条部署命令（首次仍需填写模型密钥和 UI 密码）：
+服务器只需运行一条部署命令（首次仍需填写模型密钥；公网 UI 需先按 [Google 登录部署](google-login.md) 配置 HTTPS 和账号授权）：
 
 ```bash
 sudo ./deploy/setup-server.sh

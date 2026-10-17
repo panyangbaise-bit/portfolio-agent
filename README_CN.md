@@ -76,7 +76,7 @@ K 线工具现支持成交量、5/10/20 根均量和放缩量倍数；Agent 可�
 - **决策落库**：会话、工具调用、建议与用户操作写入 SQLite
 - **双语界面**：右上角 **EN / CN**
 - **Telegram**：可选启动欢迎与分析摘要
-- **公网门禁**：`AUTH_ENABLED` + 密码；连续失败后 IP 拉黑
+- **Google 登录**：验证 Google 身份并检查精确邮箱白名单，配置完成前拒绝访问
 
 ## 页面
 
@@ -98,11 +98,12 @@ sudo apt update && sudo apt install -y git
 sudo git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
 cd /opt/portfolio-agent
 sudo ./deploy/setup-server.sh
-sudo nano /opt/portfolio-agent/.env   # 填 DEEPSEEK_API_KEY 与 AUTH_PASSWORD
+sudo nano /opt/portfolio-agent/.env   # 填 DEEPSEEK_API_KEY
+.venv/bin/python deploy/configure-google-auth.py  # 配置 Google Web 客户端
 sudo systemctl restart portfolio-agent
 ```
 
-访问 `http://你的服务器IP:8501`。日志：`journalctl -u portfolio-agent -f`。
+按 [Google 登录部署](docs/google-login.md) 配置 HTTPS 域名和回调地址后，通过域名访问。日志：`journalctl -u portfolio-agent -f`。
 
 部署脚本会自动启用 A2A、生成并保留访问密钥，UI 和 A2A 随同一个服务启动及开机自启。没有域名时，可配置公网 IP + 相同 token 直连，或使用 SSH 隧道，见 [无域名接入步骤](docs/agent-interfaces.md#无域名最简部署ui--a2a)。A2A 默认监听回环地址，公网直连需改为 `0.0.0.0` 并放行 8502；HTTP 直连不加密。无需单独启动 A2A，也无需开启 ChatGPT Actions。
 
@@ -141,7 +142,7 @@ cp .env.example .env
 ./run.sh
 ```
 
-公网部署前设置 `AUTH_ENABLED=true` 与 `AUTH_PASSWORD`。连续输错密码后，客户端 IP 会写入 `data/ip_blacklist.json`。
+公网保持 `AUTH_ENABLED=true`，在 `.streamlit/secrets.toml` 配置 Google 登录密钥，在 `AUTH_ALLOWED_EMAILS` 填写允许访问的 Gmail / Google Workspace 邮箱。详见 [Google 登录部署](docs/google-login.md)。密码登录已删除；只有本机开发可以显式设置 `AUTH_ENABLED=false`。
 
 ## 配置
 
@@ -156,9 +157,8 @@ cp .env.example .env
 | `APP_TIMEZONE` | 否 | `Asia/Shanghai` |
 | `NEWS_CRONTAB` | 否 | `0 8-22/2 * * *`（也可在运行中心修改） |
 | `BRAVE_SEARCH_API_KEY` | 否 | 不启用网页搜索；仅当华尔街见闻没有相关新闻时才调用 |
-| `AUTH_ENABLED` | 否 | `false` |
-| `AUTH_PASSWORD` | 开启门禁时必填 | — |
-| `AUTH_MAX_FAILURES` | 否 | `3` |
+| `AUTH_ENABLED` | 否 | `true`（仅本机开发可关闭） |
+| `AUTH_ALLOWED_EMAILS` | 开启认证时必填 | 空白名单拒绝所有访问 |
 | `TELEGRAM_BOT_TOKEN` | 否 | 不推送 |
 | `TELEGRAM_CHAT_ID` | 否 | 不推送 |
 | `LANGSMITH_API_KEY` | 否 | 不追踪 |

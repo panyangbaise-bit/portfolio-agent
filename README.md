@@ -74,7 +74,7 @@ Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss sta
 - **Decision log** — sessions, tool calls, recommendations, and user actions in SQLite
 - **Bilingual UI** — **EN / CN** toggle in the top-right banner
 - **Optional Telegram** — startup welcome + analysis summaries
-- **Public gate** — `AUTH_ENABLED` + password; IPs blacklist after repeated failures
+- **Google login** — verified Google identity plus an exact email allowlist; private pages stay locked until configured
 
 ## Pages
 
@@ -98,11 +98,12 @@ sudo apt update && sudo apt install -y git
 sudo git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
 cd /opt/portfolio-agent
 sudo ./deploy/setup-server.sh
-sudo nano /opt/portfolio-agent/.env   # DEEPSEEK_API_KEY + AUTH_PASSWORD
+sudo nano /opt/portfolio-agent/.env   # DEEPSEEK_API_KEY
+.venv/bin/python deploy/configure-google-auth.py  # Google Web client credentials
 sudo systemctl restart portfolio-agent
 ```
 
-Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`.
+Configure your HTTPS domain and OAuth callback using the [Google login guide](docs/google-login.md), then open that domain. Logs: `journalctl -u portfolio-agent -f`.
 
 ## How to use
 
@@ -143,20 +144,19 @@ Then open `http://YOUR_SERVER_IP:8501`. Logs: `journalctl -u portfolio-agent -f`
 | `APP_TIMEZONE` | No | `Asia/Shanghai` |
 | `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable in Operations) |
 | `BRAVE_SEARCH_API_KEY` | No | web search off; used only when WallStreetCN news has no relevant hit |
-| `AUTH_ENABLED` | No | `false` |
-| `AUTH_PASSWORD` | If auth on | — |
-| `AUTH_MAX_FAILURES` | No | `3` |
+| `AUTH_ENABLED` | No | `true` (disable only for local development) |
+| `AUTH_ALLOWED_EMAILS` | If auth on | Empty means deny all |
 | `TELEGRAM_BOT_TOKEN` | No | notifications off |
 | `TELEGRAM_CHAT_ID` | No | notifications off |
 | `LANGSMITH_API_KEY` | No | tracing off |
 
-Before a public deploy, set `AUTH_ENABLED=true` and a strong `AUTH_PASSWORD`. After `AUTH_MAX_FAILURES` wrong attempts the client IP is written to `data/ip_blacklist.json`.
+Keep `AUTH_ENABLED=true` on public deployments. Configure Google OIDC secrets in `.streamlit/secrets.toml` and exact verified Gmail / Workspace emails in `AUTH_ALLOWED_EMAILS`. See the [Google login guide](docs/google-login.md). Password login has been removed. For local development only, explicitly set `AUTH_ENABLED=false` if you do not configure Google login.
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
-| UI | Streamlit 1.33+ |
+| UI | Streamlit 1.66+ with Google OIDC |
 | Agent | LangGraph + LangChain tools |
 | LLM | `DeepSeekChatOpenAI` → `deepseek-v4-pro` (thinking mode) |
 | Market data | yfinance, akshare, CoinGecko, WallStreetCN; Brave web search optional |
