@@ -18,6 +18,7 @@ CHART_BLOCK = re.compile(r"^```kline\s*\n(.*?)\n```[ \t]*$", re.MULTILINE | re.D
 
 
 def build_kline_figure(payload: dict, locale: str = "zh") -> go.Figure:
+    locale = "zh" if locale in ("zh", "cn") else "en"
     label = lambda key, **kw: translate(locale, "chart." + key, **kw)
     bars = payload["bars"]
     dates = [bar["date"] for bar in bars]
@@ -28,7 +29,8 @@ def build_kline_figure(payload: dict, locale: str = "zh") -> go.Figure:
         rows=2 if has_volume else 1, cols=1, shared_xaxes=True,
         vertical_spacing=0.06, row_heights=[0.72, 0.28] if has_volume else [1],
     )
-    up, down = "#f87171", "#34d399"
+    red, green = "#f87171", "#34d399"
+    up, down = (red, green) if locale == "zh" else (green, red)
     if kind == "ohlc":
         fig.add_trace(go.Candlestick(
             x=dates, open=[b["open"] for b in bars], high=[b["high"] for b in bars],

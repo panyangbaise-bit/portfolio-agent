@@ -11,7 +11,7 @@ _EN = {
     "chart.lot": "lots (100 shares)", "chart.share": "shares", "chart.usd": "USD",
     "chart.unknown_unit": "provider units",
     "chart.snapshot": "{ticker} · {market} · {period} · {start} – {end} · Saved snapshot",
-    "chart.note": "Red: up · Green: down. VMA includes the current bar. Latest bar may be incomplete. Labels and lines are Agent analysis. Use the camera button to save PNG.",
+    "chart.note": "Green: up · Red: down. VMA includes the current bar. Latest bar may be incomplete. Labels and lines are Agent analysis. Use the camera button to save PNG.",
     "chart.nav_note": "NAV series; OHLC and trading volume are unavailable.",
     "chart.crypto_note": "Last UTC price sample per day; volume is rolling 24h USD turnover, not daily candle volume.",
     "chart.no_volume": "Volume is unavailable for this series.",

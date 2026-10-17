@@ -2,6 +2,7 @@
 """Install the pinned upstream MCP bridge and optionally register it in Codex."""
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,6 +10,24 @@ import sys
 from urllib.parse import urlsplit
 
 PACKAGE = "@cognicellai/a2a-mcp@0.1.1"
+
+
+def find_codex_cli():
+    executable = shutil.which("codex")
+    if executable:
+        return executable
+    # Desktop apps bundle the CLI even when the user's shell PATH lacks it.
+    for applications in (Path("/Applications"), Path.home() / "Applications"):
+        for relative in (
+            "Codex.app/Contents/Resources/codex",
+            "ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        ):
+            candidate = applications / relative
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+    return None
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-url", default="http://127.0.0.1:8502")
 parser.add_argument("--codex", action="store_true", help="Register a2a-bridge in Codex")
@@ -47,9 +66,10 @@ root = Path(__file__).resolve().parents[1]
 command = [sys.executable, str(root / "deploy/run-a2a-mcp.py"), "--config", str(config_path),
            "--node", node, "--bridge", str(install / "node_modules/@cognicellai/a2a-mcp/dist/index.js")]
 if args.codex:
-    codex = shutil.which("codex")
+    codex = find_codex_cli()
     if not codex:
-        raise SystemExit("Bridge installed; codex CLI not found. Register the launch command manually.")
+        print(json.dumps({"package": PACKAGE, "config": str(config_path), "command": command}, indent=2))
+        raise SystemExit("Bridge installed; codex CLI not found in PATH or desktop apps. Use the command array above to register this stdio server in your MCP client.")
     current = Path.home() / ".codex/config.toml"
     if current.exists():
         from datetime import datetime

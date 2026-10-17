@@ -226,3 +226,19 @@ def test_chart_chinese_labels_are_not_overwritten_by_english_fallback():
     from app.i18n import translate
     assert translate("zh", "chart.ohlc") == "K线"
     assert translate("en", "chart.ohlc") == "Candles"
+
+
+@pytest.mark.parametrize("locale,up,down", [
+    ("en", "#34d399", "#f87171"),
+    ("zh", "#f87171", "#34d399"),
+    ("cn", "#f87171", "#34d399"),
+])
+def test_candle_and_volume_colors_follow_page_language(locale, up, down):
+    payload = build_chart_payload(source_state(), "", "AAPL", "", [], [])
+    # Exercise both directions, including volume bars, on the same saved snapshot.
+    payload["bars"][1]["open"], payload["bars"][1]["close"] = 103, 101
+    figure = kline_chart.build_kline_figure(payload, locale)
+    candle, volume = figure.data[:2]
+    assert candle.increasing.line.color == up
+    assert candle.decreasing.line.color == down
+    assert volume.marker.color[:2] == (up, down)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Configure loopback API and private tokens without printing credentials."""
 import argparse
+import os
 from pathlib import Path
 import secrets
 from urllib.parse import urlsplit
@@ -27,17 +28,24 @@ if (url.scheme not in {"http", "https"} or not url.hostname or url.username or u
     raise SystemExit("Use an origin URL, e.g. https://portfolio.example.com")
 if not args.a2a_only and url.hostname not in {"127.0.0.1", "localhost", "::1"} and (url.scheme != "https" or url.port not in {None, 443}):
     raise SystemExit("Public GPT Actions require HTTPS on port 443")
-path.chmod(0o600)
-for key in (("A2A_TOKEN",) if args.a2a_only else ("A2A_TOKEN", "ACTIONS_TOKEN")):
-    if not values.get(key):
-        set_key(path, key, secrets.token_urlsafe(32))
+original_stat = path.stat()
 updates = {
     "A2A_ENABLED": "true", "A2A_PORT": port, "A2A_PUBLIC_URL": base,
     "A2A_HOST": (values.get("A2A_HOST") or "127.0.0.1") if args.a2a_only else "127.0.0.1",
 }
 if not args.a2a_only:
     updates.update(ACTIONS_ENABLED="true", ACTIONS_PUBLIC_URL=base)
-for key, value in updates.items():
-    set_key(path, key, value)
 path.chmod(0o600)
+try:
+    for key in (("A2A_TOKEN",) if args.a2a_only else ("A2A_TOKEN", "ACTIONS_TOKEN")):
+        if not values.get(key):
+            set_key(path, key, secrets.token_urlsafe(32))
+    for key, value in updates.items():
+        set_key(path, key, value)
+finally:
+    # python-dotenv atomically replaces the file. Under sudo the replacement
+    # belongs to root, so a service user can lose access even with mode 600.
+    path.chmod(0o600)
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        os.chown(path, original_stat.st_uid, original_stat.st_gid)
 print(f"Configured external API at {base}; private tokens stored in {path}. Existing tokens preserved.")

@@ -70,6 +70,12 @@ try {
     assert(task.artifacts[0].parts.some(p => typeof (p.text ?? p.content?.value) === "string" && (p.text ?? p.content?.value).length > 0));
     console.log("PASS real LLM/tool answer through MCP/A2A (portfolio values omitted from test log)");
   }
+} catch (error) {
+  console.error(`FAIL ${error.message}`);
+  if (/timed out|fetch failed|ECONNREFUSED|ECONNRESET/i.test(error.message)) {
+    console.error("The A2A HTTP endpoint did not respond. Check server A2A_HOST/A2A_PORT, service status, and the cloud/system firewall. Agent Card discovery does not require a token.");
+  }
+  process.exitCode = 1;
 } finally {
   await client.close();
 }
