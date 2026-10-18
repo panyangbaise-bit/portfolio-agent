@@ -59,7 +59,10 @@ def test_dismiss_requires_nonblank_reason_and_does_not_mutate_pending_record():
     try:
         rec = _recommendation(db)
         for reason in (None, "", " \n\t "):
-            assert apply_recommendation_action(db, rec.id, "dismiss", reason)["status"] == "reason_required"
+            assert (
+                apply_recommendation_action(db, rec.id, "dismiss", reason)["status"]
+                == "reason_required"
+            )
             db.refresh(rec)
             assert rec.status == "pending"
             assert db.query(UserAction).count() == 0

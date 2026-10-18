@@ -1,16 +1,16 @@
 """Total return includes closed positions and does not double-count partial sells."""
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
-from app.components.portfolio_valuation import calculate_portfolio_totals
 from db.migrate import _backfill_opening_buys
 from db.models import Base, Holding
 from db.repository import create_holding, get_transactions_for_holding
-from types import SimpleNamespace
+from domain.valuation import calculate_portfolio_totals
 
 
 def _txn(txn_id, holding_id, action, shares, price, day):
@@ -43,9 +43,7 @@ def test_partial_sell_is_not_counted_twice():
         _txn(1, 1, "buy", 10, 100, 1),
         _txn(2, 1, "sell", 4, 130, 2),
     ]
-    totals = calculate_portfolio_totals(
-        [holding], {("US", "AAPL"): 100}, {"US": 7.0}, txns
-    )
+    totals = calculate_portfolio_totals([holding], {("US", "AAPL"): 100}, {"US": 7.0}, txns)
     assert totals["realized_pnl"] == 840.0
     assert totals["unrealized_pnl"] == 0.0
     assert totals["pnl"] == 840.0
@@ -79,9 +77,7 @@ def test_legacy_closed_sells_use_residual_cost_once():
 def test_share_edit_does_not_invent_realized_gain():
     holding = _holding(shares=6, cost_basis=100, status="open")
     txns = [_txn(1, 1, "buy", 10, 100, 1)]
-    totals = calculate_portfolio_totals(
-        [holding], {("US", "AAPL"): 110}, {"US": 1.0}, txns
-    )
+    totals = calculate_portfolio_totals([holding], {("US", "AAPL"): 110}, {"US": 1.0}, txns)
     assert totals["positions"][0]["method"] == "residual_open"
     assert totals["realized_pnl"] == 0
     assert totals["unrealized_pnl"] == 60
@@ -114,19 +110,33 @@ def test_backfill_opening_buy_skips_holdings_that_already_traded():
     db = Session(engine)
     try:
         empty = Holding(
-            ticker="MSFT", market="US", shares=2, cost_basis=50,
-            position_type="core", status="open",
+            ticker="MSFT",
+            market="US",
+            shares=2,
+            cost_basis=50,
+            position_type="core",
+            status="open",
         )
         traded = Holding(
-            ticker="AAPL", market="US", shares=4, cost_basis=80,
-            position_type="core", status="open",
+            ticker="AAPL",
+            market="US",
+            shares=4,
+            cost_basis=80,
+            position_type="core",
+            status="open",
         )
         db.add_all([empty, traded])
         db.commit()
         from db.models import Transaction
-        db.add(Transaction(
-            holding_id=traded.id, action="sell", shares=1, price=90,
-        ))
+
+        db.add(
+            Transaction(
+                holding_id=traded.id,
+                action="sell",
+                shares=1,
+                price=90,
+            )
+        )
         db.commit()
         empty_id, traded_id = empty.id, traded.id
     finally:

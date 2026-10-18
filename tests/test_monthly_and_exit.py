@@ -17,13 +17,15 @@ def test_monthly_context_skips_when_nothing_to_summarize():
 
 
 def test_monthly_context_includes_empty_trade_window():
-    text = compose_monthly_context({
-        "holdings": ["- AAPL"],
-        "holding_lines": ["- AAPL US open core shares=1"],
-        "trade_lines": [],
-        "closed_lines": [],
-        "return_summary": "总收益 ¥1",
-    })
+    text = compose_monthly_context(
+        {
+            "holdings": ["- AAPL"],
+            "holding_lines": ["- AAPL US open core shares=1"],
+            "trade_lines": [],
+            "closed_lines": [],
+            "return_summary": "总收益 ¥1",
+        }
+    )
     assert "月度总结" in text
     assert "近窗口无成交" in text
     assert "总收益 ¥1" in text

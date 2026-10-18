@@ -1,6 +1,9 @@
 import html
 
 import streamlit as st
+
+from app.components.currency import fetch_cny_rates
+from app.components.price_fetcher import fetch_prices_batch
 from app.i18n import t
 from app.icons import icon
 from db.repository import (
@@ -10,9 +13,7 @@ from db.repository import (
     get_session,
     list_transactions,
 )
-from app.components.currency import fetch_cny_rates
-from app.components.price_fetcher import fetch_prices_batch
-from app.components.portfolio_valuation import calculate_portfolio_totals
+from domain.valuation import calculate_portfolio_totals
 
 
 def _signed_cny(amount: float) -> str:
@@ -34,13 +35,17 @@ def _return_split_html(realized: float, unrealized: float) -> str:
         '<div class="split">'
         '<div class="split-row">'
         '<span class="split-label">' + html.escape(t("kpi.realized")) + "</span>"
-        '<span class="split-amt ' + _pnl_tone(realized) + '">'
+        '<span class="split-amt '
+        + _pnl_tone(realized)
+        + '">'
         + html.escape(_signed_cny(realized))
         + "</span>"
         "</div>"
         '<div class="split-row">'
         '<span class="split-label">' + html.escape(t("kpi.open")) + "</span>"
-        '<span class="split-amt ' + _pnl_tone(unrealized) + '">'
+        '<span class="split-amt '
+        + _pnl_tone(unrealized)
+        + '">'
         + html.escape(_signed_cny(unrealized))
         + "</span>"
         "</div>"
@@ -66,9 +71,7 @@ def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
     have = {market.upper() for market in (cny_rates or {})}
     if cny_rates is None or any(market.upper() not in have for market in needed):
         cny_rates = fetch_cny_rates(needed)
-    totals = calculate_portfolio_totals(
-        all_holdings, prices, cny_rates, transactions
-    )
+    totals = calculate_portfolio_totals(all_holdings, prices, cny_rates, transactions)
 
     cols = st.columns(4)
     with cols[0]:
@@ -98,15 +101,11 @@ def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
         value = f"{pnl_pct:+.2f}%" if pnl_pct is not None else "—"
         split = ""
         if totals is not None:
-            split = _return_split_html(
-                totals["realized_pnl"], totals["unrealized_pnl"]
-            )
+            split = _return_split_html(totals["realized_pnl"], totals["unrealized_pnl"])
         st.html(
             '<div class="cp-pnl-metric">'
             '<div class="label">' + html.escape(label) + "</div>"
-            '<div class="value ' + tone + '">' + html.escape(value) + "</div>"
-            + split
-            + "</div>"
+            '<div class="value ' + tone + '">' + html.escape(value) + "</div>" + split + "</div>"
         )
     if totals is None:
         st.warning(t("kpi.fx_unavailable"))
@@ -116,7 +115,9 @@ def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
         st.html(
             '<div class="cp-pnl-metric">'
             '<div class="label">' + html.escape(t("kpi.pending_recs")) + "</div>"
-            '<div class="value pa-kpi-value ' + pending_tone + '">'
+            '<div class="value pa-kpi-value '
+            + pending_tone
+            + '">'
             + icon(pending_icon)
             + html.escape(str(len(pending)))
             + "</div></div>"
@@ -132,7 +133,9 @@ def render_kpi_cards(holdings=None, prices=None, cny_rates=None):
         st.html(
             '<div class="cp-pnl-metric">'
             '<div class="label">' + html.escape(t("kpi.risk_level")) + "</div>"
-            '<div class="value pa-kpi-value ' + risk_tone + '">'
+            '<div class="value pa-kpi-value '
+            + risk_tone
+            + '">'
             + icon(risk_icon)
             + html.escape(risk)
             + "</div></div>"

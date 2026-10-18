@@ -1,11 +1,10 @@
 """Main dashboard — KPI overview and holdings snapshot."""
 
 import streamlit as st
-from app.i18n import t
+
 from app.components.currency import fetch_cny_rates
-from app.components.kpi_cards import render_kpi_cards
-from app.components.trading_discipline import render_trading_discipline
 from app.components.holdings_table import render_holdings_table
+from app.components.kpi_cards import render_kpi_cards
 from app.components.price_fetcher import (
     fetch_prices_batch,
     load_cached_prices,
@@ -13,10 +12,9 @@ from app.components.price_fetcher import (
     persist_cost_basis_fallbacks,
     save_live_prices,
 )
+from app.components.trading_discipline import render_trading_discipline
+from app.i18n import t
 from db.repository import get_open_holdings, get_session
-
-st.title(t("dashboard.title"))
-st.caption(t("dashboard.caption"))
 
 
 def _load_open_holdings():
@@ -42,18 +40,27 @@ def render_live_kpi_snapshot():
     render_kpi_cards(holdings=holdings, prices=prices, cny_rates=cny_rates)
 
 
-holdings = _load_open_holdings()
-table_prices = load_cached_prices(holdings)
-table_prices = persist_cost_basis_fallbacks(holdings, table_prices)
-markets = tuple(sorted({holding.market for holding in holdings}))
-table_cny_rates = fetch_cny_rates(markets)
+def render() -> None:
+    """Render this page for the current Streamlit session."""
+    st.title(t("dashboard.title"))
+    st.caption(t("dashboard.caption"))
 
-render_live_kpi_snapshot()
-st.divider()
-render_trading_discipline()
-st.divider()
-render_holdings_table(
-    holdings=holdings,
-    prices=table_prices,
-    cny_rates=table_cny_rates,
-)
+    holdings = _load_open_holdings()
+    table_prices = load_cached_prices(holdings)
+    table_prices = persist_cost_basis_fallbacks(holdings, table_prices)
+    markets = tuple(sorted({holding.market for holding in holdings}))
+    table_cny_rates = fetch_cny_rates(markets)
+
+    render_live_kpi_snapshot()
+    st.divider()
+    render_trading_discipline()
+    st.divider()
+    render_holdings_table(
+        holdings=holdings,
+        prices=table_prices,
+        cny_rates=table_cny_rates,
+    )
+
+
+if __name__ == "__main__":
+    render()

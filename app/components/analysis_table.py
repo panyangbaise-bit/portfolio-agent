@@ -7,9 +7,8 @@ import pandas as pd
 import streamlit as st
 
 from app.i18n import enum_label, t
-from app.timeutil import format_display_time
+from common.time import format_display_time
 from config import config
-from scheduler.cron_text import describe_cron
 from db.repository import (
     get_agent_session_detail,
     get_session,
@@ -26,6 +25,7 @@ from scheduler.cron import (
     trigger_job,
     update_news_crontab,
 )
+from scheduler.cron_text import describe_cron
 
 JOB_IDS = (
     "us_after_market",
@@ -115,6 +115,7 @@ def render_monthly_summary():
             session.close()
         if summary:
             from app.components.kline_chart import render_report
+
             render_report(summary, key_prefix="monthly", ui=st)
         else:
             st.caption(t("jobs.monthly.empty"))
@@ -127,8 +128,10 @@ def render_job_schedule_table():
     if jobs:
         rows = [
             _schedule_row(
-                j.get("id") or "", j.get("next_run"),
-                j.get("crontab") or "", j.get("timezone") or "",
+                j.get("id") or "",
+                j.get("next_run"),
+                j.get("crontab") or "",
+                j.get("timezone") or "",
             )
             for j in jobs
         ]
@@ -211,24 +214,32 @@ def render_job_run_table(limit: int = 50):
     filters = st.columns([2, 1, 1])
     with filters[0]:
         job_filter = st.selectbox(
-            t("jobs.detail.filter_job"), [""] + list(JOB_IDS) + ["exit_analysis"],
+            t("jobs.detail.filter_job"),
+            [""] + list(JOB_IDS) + ["exit_analysis"],
             format_func=lambda jid: enum_label("job", jid) if jid else t("jobs.detail.filter_all"),
             key="jobs_runtime_job_filter",
         )
     with filters[1]:
         status_filter = st.selectbox(
-            t("col.status"), ["", "failed", "running", "completed", "skipped"],
-            format_func=lambda status: enum_label("job_status", status) if status else t("jobs.runtime.all_status"),
+            t("col.status"),
+            ["", "failed", "running", "completed", "skipped"],
+            format_func=lambda status: enum_label("job_status", status)
+            if status
+            else t("jobs.runtime.all_status"),
             key="jobs_runtime_status_filter",
         )
     with filters[2]:
         limit = st.selectbox(
-            t("jobs.record_limit"), sorted({limit, 50, 100, 200}), key="jobs_runtime_limit",
+            t("jobs.record_limit"),
+            sorted({limit, 50, 100, 200}),
+            key="jobs_runtime_limit",
         )
 
     session = get_session()
     try:
-        runs = list_job_runs(session, limit=limit, job_id=job_filter or None, status=status_filter or None)
+        runs = list_job_runs(
+            session, limit=limit, job_id=job_filter or None, status=status_filter or None
+        )
     finally:
         session.close()
     if not runs:
@@ -236,17 +247,24 @@ def render_job_run_table(limit: int = 50):
         return
 
     st.caption(t("jobs.runtime.select_hint", count=len(runs)))
-    rows = [{
-        t("col.time"): _fmt_time(run.started_at),
-        t("col.job"): enum_label("job", run.job_id),
-        t("col.status"): _status_label(run.status),
-        t("jobs.duration"): _duration(run.started_at, run.ended_at),
-    } for run in runs]
+    rows = [
+        {
+            t("col.time"): _fmt_time(run.started_at),
+            t("col.job"): enum_label("job", run.job_id),
+            t("col.status"): _status_label(run.status),
+            t("jobs.duration"): _duration(run.started_at, run.ended_at),
+        }
+        for run in runs
+    ]
     # Reset row selection when filtering or refreshing changes the row order.
     selection_key = "jobs_runtime_rows_" + "_".join(str(run.id) for run in runs)
     event = st.dataframe(
-        pd.DataFrame(rows), width="stretch", hide_index=True,
-        on_select="rerun", selection_mode="single-row", key=selection_key,
+        pd.DataFrame(rows),
+        width="stretch",
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key=selection_key,
         height=min(460, 36 * len(rows) + 40),
     )
     selected = event.selection.rows
@@ -261,6 +279,7 @@ def render_job_run_table(limit: int = 50):
         )
         if run.details:
             from app.components.kline_chart import render_report
+
             render_report(run.details, key_prefix=f"run_{run.id}", ui=st)
         else:
             st.caption(t("jobs.runtime.no_details"))
@@ -327,19 +346,26 @@ def render_agent_session_detail(limit: int = 50):
         st.caption(t("jobs.detail.empty"))
         return
 
-    st.caption(t(
-        "jobs.detail.metadata",
-        status=enum_label("job_status", detail.get("status", "completed")),
-        market=enum_label("market", detail["market"]) if detail.get("market") else "—",
-        recs=len(detail.get("recommendations") or []),
-        tools=len(detail.get("tool_calls") or []),
-    ))
-    summary_tab, recs_tab, tools_tab = st.tabs([
-        t("jobs.detail.summary"), t("jobs.detail.recommendations"), t("jobs.detail.tools"),
-    ])
+    st.caption(
+        t(
+            "jobs.detail.metadata",
+            status=enum_label("job_status", detail.get("status", "completed")),
+            market=enum_label("market", detail["market"]) if detail.get("market") else "—",
+            recs=len(detail.get("recommendations") or []),
+            tools=len(detail.get("tool_calls") or []),
+        )
+    )
+    summary_tab, recs_tab, tools_tab = st.tabs(
+        [
+            t("jobs.detail.summary"),
+            t("jobs.detail.recommendations"),
+            t("jobs.detail.tools"),
+        ]
+    )
     with summary_tab:
         if detail.get("summary"):
             from app.components.kline_chart import render_report
+
             render_report(detail["summary"], key_prefix=f"report_{selected_id}", ui=st)
         else:
             st.caption(t("jobs.detail.summary_empty"))
@@ -352,10 +378,14 @@ def render_agent_session_detail(limit: int = 50):
                 f"{rec['ticker']} — {enum_label('action', rec['action'])} · {rec['confidence']:.0%}",
                 expanded=False,
             ):
-                st.caption(t(
-                    "rec.meta", confidence=f"{rec['confidence']:.0%}",
-                    urgency=enum_label("urgency", rec["urgency"]), date=_fmt_time(rec["created_at"]),
-                ))
+                st.caption(
+                    t(
+                        "rec.meta",
+                        confidence=f"{rec['confidence']:.0%}",
+                        urgency=enum_label("urgency", rec["urgency"]),
+                        date=_fmt_time(rec["created_at"]),
+                    )
+                )
                 if rec.get("reasoning"):
                     st.write(rec["reasoning"])
     with tools_tab:
@@ -376,9 +406,13 @@ def render_analysis_section():
     navigation, refresh = st.columns([6, 1], vertical_alignment="bottom")
     with navigation:
         section = st.radio(
-            t("jobs.navigation"), ["reports", "schedule", "runtime"],
-            format_func=lambda value: t("jobs.tab." + value), horizontal=True,
-            label_visibility="collapsed", key="jobs_section", index=0,
+            t("jobs.navigation"),
+            ["reports", "schedule", "runtime"],
+            format_func=lambda value: t("jobs.tab." + value),
+            horizontal=True,
+            label_visibility="collapsed",
+            key="jobs_section",
+            index=0,
         )
     with refresh:
         if st.button(t("jobs.refresh"), key="jobs_refresh", width="stretch"):

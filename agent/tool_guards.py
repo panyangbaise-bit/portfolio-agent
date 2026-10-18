@@ -6,8 +6,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from langchain_core.messages import ToolMessage
 
 from adapters.call_timeout import run_with_timeout_or_flag
-from config import config
 from agent.access import READ_ONLY_TOOLS
+from config import config
 
 
 def tool_call_fingerprint(name: str, args: Any) -> str:
@@ -102,9 +102,7 @@ def execute_tool_calls(
     On the Nth identical (name, params) call (default N=3), that call is not
     executed and ``tool_loop_halted`` is set so the graph can END.
     """
-    timeout = float(
-        config.TOOL_CALL_TIMEOUT if timeout is None else timeout
-    )
+    timeout = float(config.TOOL_CALL_TIMEOUT if timeout is None else timeout)
     max_identical = int(
         config.TOOL_IDENTICAL_CALL_LIMIT if max_identical is None else max_identical
     )
@@ -130,10 +128,18 @@ def execute_tool_calls(
     for tc in ai_msg.tool_calls:
         name, args, tc_id = _tool_call_parts(tc)
         if state.get("read_only") and name not in READ_ONLY_TOOLS:
-            out_messages.append(ToolMessage(
-                content=_serialize_tool_result({"error": "read_only", "message": "External queries cannot execute this tool."}),
-                tool_call_id=tc_id or "", name=name,
-            ))
+            out_messages.append(
+                ToolMessage(
+                    content=_serialize_tool_result(
+                        {
+                            "error": "read_only",
+                            "message": "External queries cannot execute this tool.",
+                        }
+                    ),
+                    tool_call_id=tc_id or "",
+                    name=name,
+                )
+            )
             continue
         fp = tool_call_fingerprint(name, args)
         prior = count_fingerprint_in_messages(history, fp) + batch_counts.get(fp, 0)

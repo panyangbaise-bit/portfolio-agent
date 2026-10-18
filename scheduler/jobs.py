@@ -2,22 +2,21 @@
 
 import logging
 
+from agent.core import (
+    poll_news_for_portfolio,
+    run_after_market_analysis,
+    run_news_triggered_analysis,
+    run_trade_review_analysis,
+)
 from db.repository import (
     create_job_run,
     finish_job_run,
     get_open_holdings,
     get_session,
 )
-from agent.core import (
-    run_after_market_analysis,
-    run_news_triggered_analysis,
-    run_trade_review_analysis,
-    poll_news_for_portfolio,
-)
+from memory.context import current_run_id
 from notifier.telegram import notify
 from scheduler.triggers import is_trading_day
-
-from memory.context import current_run_id
 
 logger = logging.getLogger(__name__)
 

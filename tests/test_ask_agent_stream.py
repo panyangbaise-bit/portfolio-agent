@@ -31,11 +31,13 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
                     "messages": [
                         AIMessage(
                             content="",
-                            tool_calls=[{
-                                "name": "get_portfolio",
-                                "args": {},
-                                "id": "c1",
-                            }],
+                            tool_calls=[
+                                {
+                                    "name": "get_portfolio",
+                                    "args": {},
+                                    "id": "c1",
+                                }
+                            ],
                         )
                     ]
                 }
@@ -45,9 +47,7 @@ def test_run_ad_hoc_query_stream_emits_status_tokens_done(monkeypatch):
             "updates",
             {
                 "tools": {
-                    "messages": [
-                        ToolMessage(content="[]", tool_call_id="c1", name="get_portfolio")
-                    ]
+                    "messages": [ToolMessage(content="[]", tool_call_id="c1", name="get_portfolio")]
                 }
             },
         )

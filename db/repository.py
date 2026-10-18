@@ -1,14 +1,29 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
 from sqlalchemy import create_engine, desc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from config import config
 from db.models import (
-    Base, Holding, Transaction, PriceCache, NewsArticle, FinancialReport,
-    AgentSession, AgentToolCall, JobRun, Recommendation, UserAction, TradingDiscipline, ConversationMessage,
+    AgentSession,
+    AgentToolCall,
+    Base,
+    ConversationMessage,
+    FinancialReport,
+    Holding,
+    JobRun,
+    NewsArticle,
+    PriceCache,
+    Recommendation,
+    TradingDiscipline,
+    Transaction,
+    UserAction,
 )
+
+if TYPE_CHECKING:
+    from db.models import WatchlistItem
 
 
 engine = create_engine(config.DATABASE_URL, echo=False)
@@ -25,25 +40,38 @@ def get_session() -> Session:
 
 # ── Holdings ──────────────────────────────────────────────
 
-def create_holding(session: Session, ticker: str, market: str, shares: float,
-                   cost_basis: float, position_type: str = "core",
-                   name: str = None) -> Holding:
+
+def create_holding(
+    session: Session,
+    ticker: str,
+    market: str,
+    shares: float,
+    cost_basis: float,
+    position_type: str = "core",
+    name: str = None,
+) -> Holding:
     holding = Holding(
-        ticker=ticker.upper(), market=market.upper(), shares=shares,
-        cost_basis=cost_basis, position_type=position_type,
-        name=name, status="open",
+        ticker=ticker.upper(),
+        market=market.upper(),
+        shares=shares,
+        cost_basis=cost_basis,
+        position_type=position_type,
+        name=name,
+        status="open",
     )
     session.add(holding)
     session.flush()
     if shares and shares > 0 and cost_basis and cost_basis > 0:
-        session.add(Transaction(
-            holding_id=holding.id,
-            action="buy",
-            shares=shares,
-            price=cost_basis,
-            notes="opening",
-            date=holding.created_at or datetime.now(timezone.utc),
-        ))
+        session.add(
+            Transaction(
+                holding_id=holding.id,
+                action="buy",
+                shares=shares,
+                price=cost_basis,
+                notes="opening",
+                date=holding.created_at or datetime.now(timezone.utc),
+            )
+        )
     session.commit()
     return holding
 
@@ -58,7 +86,11 @@ def get_open_holdings(session: Session) -> list[Holding]:
 
 
 def get_holding_by_ticker(session: Session, ticker: str) -> Optional[Holding]:
-    return session.query(Holding).filter(Holding.ticker == ticker.upper(), Holding.status != "archived").first()
+    return (
+        session.query(Holding)
+        .filter(Holding.ticker == ticker.upper(), Holding.status != "archived")
+        .first()
+    )
 
 
 def update_holding(session: Session, holding_id: int, **kwargs) -> Optional[Holding]:
@@ -84,12 +116,22 @@ def delete_holding(session: Session, holding_id: int) -> bool:
 
 # ── Transactions ──────────────────────────────────────────
 
-def create_transaction(session: Session, holding_id: int, action: str,
-                       shares: float, price: float, notes: str = None,
-                       date: datetime = None) -> Transaction:
+
+def create_transaction(
+    session: Session,
+    holding_id: int,
+    action: str,
+    shares: float,
+    price: float,
+    notes: str = None,
+    date: datetime = None,
+) -> Transaction:
     txn = Transaction(
-        holding_id=holding_id, action=action, shares=shares,
-        price=price, notes=notes,
+        holding_id=holding_id,
+        action=action,
+        shares=shares,
+        price=price,
+        notes=notes,
     )
     if date is not None:
         txn.date = date
@@ -100,13 +142,22 @@ def create_transaction(session: Session, holding_id: int, action: str,
 
 def list_transactions(session: Session) -> list[Transaction]:
     """Every trade, oldest first, so ledgers can be replayed in order."""
-    return session.query(Transaction).join(Holding).filter(Holding.status != "archived").order_by(Transaction.date, Transaction.id).all()
+    return (
+        session.query(Transaction)
+        .join(Holding)
+        .filter(Holding.status != "archived")
+        .order_by(Transaction.date, Transaction.id)
+        .all()
+    )
 
 
 def get_transactions_for_holding(session: Session, holding_id: int) -> list[Transaction]:
-    return session.query(Transaction).filter(
-        Transaction.holding_id == holding_id
-    ).order_by(desc(Transaction.date)).all()
+    return (
+        session.query(Transaction)
+        .filter(Transaction.holding_id == holding_id)
+        .order_by(desc(Transaction.date))
+        .all()
+    )
 
 
 def get_recent_transactions(session: Session, days: int = 30) -> list[Transaction]:
@@ -169,9 +220,7 @@ def apply_trade(
         old_shares = float(holding.shares or 0)
         old_cost = float(holding.cost_basis or 0)
         if shares > old_shares + 1e-12:
-            raise ValueError(
-                f"Cannot sell {shares} shares; only {old_shares} available"
-            )
+            raise ValueError(f"Cannot sell {shares} shares; only {old_shares} available")
         remaining = old_shares - shares
         if remaining < 1e-12:
             remaining = 0.0
@@ -211,13 +260,27 @@ def _schedule_exit_analysis(holding_id: int, txn_id: int) -> None:
 
 # ── Price Cache ───────────────────────────────────────────
 
-def upsert_price(session: Session, ticker: str, market: str, date: datetime,
-                 close: float, open_price: float = None, high: float = None,
-                 low: float = None, volume: float = None, source: str = "") -> PriceCache:
-    existing = session.query(PriceCache).filter(
-        PriceCache.ticker == ticker.upper(),
-        PriceCache.date == date,
-    ).first()
+
+def upsert_price(
+    session: Session,
+    ticker: str,
+    market: str,
+    date: datetime,
+    close: float,
+    open_price: float = None,
+    high: float = None,
+    low: float = None,
+    volume: float = None,
+    source: str = "",
+) -> PriceCache:
+    existing = (
+        session.query(PriceCache)
+        .filter(
+            PriceCache.ticker == ticker.upper(),
+            PriceCache.date == date,
+        )
+        .first()
+    )
     if existing:
         existing.close = close
         existing.open_price = open_price
@@ -228,9 +291,15 @@ def upsert_price(session: Session, ticker: str, market: str, date: datetime,
         session.commit()
         return existing
     entry = PriceCache(
-        ticker=ticker.upper(), market=market.upper(), date=date,
-        open_price=open_price, high=high, low=low, close=close,
-        volume=volume, source=source,
+        ticker=ticker.upper(),
+        market=market.upper(),
+        date=date,
+        open_price=open_price,
+        high=high,
+        low=low,
+        close=close,
+        volume=volume,
+        source=source,
     )
     session.add(entry)
     session.commit()
@@ -238,32 +307,51 @@ def upsert_price(session: Session, ticker: str, market: str, date: datetime,
 
 
 def get_price_history(session: Session, ticker: str, limit: int = 100) -> list[PriceCache]:
-    return session.query(PriceCache).filter(
-        PriceCache.ticker == ticker.upper()
-    ).order_by(desc(PriceCache.date)).limit(limit).all()
+    return (
+        session.query(PriceCache)
+        .filter(PriceCache.ticker == ticker.upper())
+        .order_by(desc(PriceCache.date))
+        .limit(limit)
+        .all()
+    )
 
 
 def get_latest_prices(session: Session, holdings: list) -> dict:
     """Return the latest persisted closing price for each holding."""
     prices = {}
     for holding in holdings:
-        entry = session.query(PriceCache).filter(
-            PriceCache.ticker == holding.ticker.upper(),
-            PriceCache.market == holding.market.upper(),
-        ).order_by(desc(PriceCache.date)).first()
+        entry = (
+            session.query(PriceCache)
+            .filter(
+                PriceCache.ticker == holding.ticker.upper(),
+                PriceCache.market == holding.market.upper(),
+            )
+            .order_by(desc(PriceCache.date))
+            .first()
+        )
         prices[(holding.market, holding.ticker)] = entry.close if entry else None
     return prices
 
 
 # ── News ──────────────────────────────────────────────────
 
-def save_news_article(session: Session, headline: str, source: str = "wallstreetcn",
-                      ticker: str = None, url: str = None, published_at: datetime = None,
-                      summary: str = None) -> NewsArticle:
+
+def save_news_article(
+    session: Session,
+    headline: str,
+    source: str = "wallstreetcn",
+    ticker: str = None,
+    url: str = None,
+    published_at: datetime = None,
+    summary: str = None,
+) -> NewsArticle:
     article = NewsArticle(
         ticker=ticker.upper() if ticker else None,
-        headline=headline, source=source, url=url,
-        published_at=published_at, summary=summary,
+        headline=headline,
+        source=source,
+        url=url,
+        published_at=published_at,
+        summary=summary,
     )
     session.add(article)
     session.commit()
@@ -279,14 +367,25 @@ def get_recent_news(session: Session, ticker: str = None, limit: int = 50) -> li
 
 # ── Financial Reports ─────────────────────────────────────
 
-def save_financial_report(session: Session, ticker: str, market: str,
-                          report_date: datetime, report_type: str,
-                          revenue: float = None, eps: float = None,
-                          key_metrics: dict = None) -> FinancialReport:
+
+def save_financial_report(
+    session: Session,
+    ticker: str,
+    market: str,
+    report_date: datetime,
+    report_type: str,
+    revenue: float = None,
+    eps: float = None,
+    key_metrics: dict = None,
+) -> FinancialReport:
     report = FinancialReport(
-        ticker=ticker.upper(), market=market.upper(),
-        report_date=report_date, report_type=report_type,
-        revenue=revenue, eps=eps, key_metrics=key_metrics,
+        ticker=ticker.upper(),
+        market=market.upper(),
+        report_date=report_date,
+        report_type=report_type,
+        revenue=revenue,
+        eps=eps,
+        key_metrics=key_metrics,
     )
     session.add(report)
     session.commit()
@@ -295,11 +394,16 @@ def save_financial_report(session: Session, ticker: str, market: str,
 
 # ── Agent Sessions ────────────────────────────────────────
 
-def create_agent_session(session: Session, triggered_by: str,
-                         news_snapshot: dict = None,
-                         job_id: str = None,
-                         market: str = None) -> AgentSession:
+
+def create_agent_session(
+    session: Session,
+    triggered_by: str,
+    news_snapshot: dict = None,
+    job_id: str = None,
+    market: str = None,
+) -> AgentSession:
     from memory.context import current_run_id
+
     s = AgentSession(
         job_run_id=current_run_id.get(),
         triggered_by=triggered_by,
@@ -341,14 +445,24 @@ def end_agent_session(
         return
     s.status = status
     s.ended_at = datetime.now(timezone.utc)
-    if summary and s.job_id in ("ask_agent", "a2a") and summary.startswith("Q: ") and "\nA: " in summary:
+    if (
+        summary
+        and s.job_id in ("ask_agent", "a2a")
+        and summary.startswith("Q: ")
+        and "\nA: " in summary
+    ):
         # Legacy UI summary stays available; memory uses separately timestamped turns.
         # The user message was saved on send; the answer is saved on completion.
-        last = session.query(ConversationMessage).filter_by(session_id=s.id).order_by(ConversationMessage.id.desc()).first()
+        last = (
+            session.query(ConversationMessage)
+            .filter_by(session_id=s.id)
+            .order_by(ConversationMessage.id.desc())
+            .first()
+        )
         prefix = f"Q: {last.content}\nA: " if last is not None and last.role == "user" else None
         if prefix and summary.startswith(prefix):
             # User text may itself contain the legacy Q/A separator.
-            question, answer = last.content, summary[len(prefix):]
+            question, answer = last.content, summary[len(prefix) :]
         else:
             question, answer = summary[3:].split("\nA: ", 1)
         if last is None or last.role != "user" or last.content != question:
@@ -402,21 +516,23 @@ def list_analysis_runs(
         summary = s.summary or ""
         if len(summary) > 120:
             summary = summary[:117] + "..."
-        rows.append({
-            "id": s.id,
-            "started_at": s.started_at,
-            "ended_at": s.ended_at,
-            "job_id": s.job_id,
-            "market": s.market,
-            "triggered_by": s.triggered_by,
-            "status": s.status,
-            "rec_count": len(recs),
-            "pending_count": pending,
-            "actions": ", ".join(actions) if actions else "—",
-            "max_confidence": max_conf,
-            "summary": summary if summary else "—",
-            "tool_count": len(s.tool_calls or []),
-        })
+        rows.append(
+            {
+                "id": s.id,
+                "started_at": s.started_at,
+                "ended_at": s.ended_at,
+                "job_id": s.job_id,
+                "market": s.market,
+                "triggered_by": s.triggered_by,
+                "status": s.status,
+                "rec_count": len(recs),
+                "pending_count": pending,
+                "actions": ", ".join(actions) if actions else "—",
+                "max_confidence": max_conf,
+                "summary": summary if summary else "—",
+                "tool_count": len(s.tool_calls or []),
+            }
+        )
     return rows
 
 
@@ -478,8 +594,7 @@ def create_job_run(session: Session, job_id: str, job_name: str) -> JobRun:
     return run
 
 
-def finish_job_run(session: Session, run_id: int, status: str,
-                   details: str = None):
+def finish_job_run(session: Session, run_id: int, status: str, details: str = None):
     """Store a completed, skipped, or failed scheduler job outcome."""
     run = session.query(JobRun).filter(JobRun.id == run_id).first()
     if run:
@@ -489,8 +604,9 @@ def finish_job_run(session: Session, run_id: int, status: str,
         session.commit()
 
 
-def list_job_runs(session: Session, limit: int = 50,
-                  job_id: Optional[str] = None, status: Optional[str] = None) -> list[JobRun]:
+def list_job_runs(
+    session: Session, limit: int = 50, job_id: Optional[str] = None, status: Optional[str] = None
+) -> list[JobRun]:
     """Filter before limiting so older failures remain discoverable."""
     query = session.query(JobRun)
     if job_id:
@@ -500,11 +616,18 @@ def list_job_runs(session: Session, limit: int = 50,
     return query.order_by(desc(JobRun.started_at), desc(JobRun.id)).limit(limit).all()
 
 
-def log_tool_call(session: Session, session_id: int, tool_name: str,
-                  params: dict = None, result_summary: str = None) -> AgentToolCall:
+def log_tool_call(
+    session: Session,
+    session_id: int,
+    tool_name: str,
+    params: dict = None,
+    result_summary: str = None,
+) -> AgentToolCall:
     call = AgentToolCall(
-        session_id=session_id, tool_name=tool_name,
-        params=params, result_summary=result_summary,
+        session_id=session_id,
+        tool_name=tool_name,
+        params=params,
+        result_summary=result_summary,
     )
     session.add(call)
     session.commit()
@@ -513,13 +636,23 @@ def log_tool_call(session: Session, session_id: int, tool_name: str,
 
 # ── Recommendations ───────────────────────────────────────
 
-def create_recommendation(session: Session, session_id: int, ticker: str,
-                          action: str, reasoning: str, confidence: float,
-                          urgency: str = "low") -> Recommendation:
+
+def create_recommendation(
+    session: Session,
+    session_id: int,
+    ticker: str,
+    action: str,
+    reasoning: str,
+    confidence: float,
+    urgency: str = "low",
+) -> Recommendation:
     rec = Recommendation(
-        session_id=session_id, ticker=ticker.upper(),
-        action=action, reasoning=reasoning,
-        confidence=confidence, urgency=urgency,
+        session_id=session_id,
+        ticker=ticker.upper(),
+        action=action,
+        reasoning=reasoning,
+        confidence=confidence,
+        urgency=urgency,
     )
     session.add(rec)
     session.commit()
@@ -573,13 +706,17 @@ def find_similar_recommendation(
 
 
 def get_pending_recommendations(session: Session) -> list[Recommendation]:
-    return session.query(Recommendation).filter(
-        Recommendation.status == "pending"
-    ).order_by(desc(Recommendation.created_at)).all()
+    return (
+        session.query(Recommendation)
+        .filter(Recommendation.status == "pending")
+        .order_by(desc(Recommendation.created_at))
+        .all()
+    )
 
 
-def get_recommendation_history(session: Session, ticker: str = None,
-                               limit: int = 50) -> list[Recommendation]:
+def get_recommendation_history(
+    session: Session, ticker: str = None, limit: int = 50
+) -> list[Recommendation]:
     q = session.query(Recommendation).options(selectinload(Recommendation.user_action))
     if ticker:
         q = q.filter(Recommendation.ticker == ticker.upper())
@@ -588,15 +725,15 @@ def get_recommendation_history(session: Session, ticker: str = None,
 
 # ── User Actions ──────────────────────────────────────────
 
-def apply_recommendation_action(session: Session, recommendation_id: int,
-                                action: str, notes: str = None) -> dict:
+
+def apply_recommendation_action(
+    session: Session, recommendation_id: int, action: str, notes: str = None
+) -> dict:
     """Apply an accept/dismiss action once to a pending recommendation."""
     if action not in ("accept", "dismiss"):
         return {"status": "invalid_action"}
 
-    rec = session.query(Recommendation).filter(
-        Recommendation.id == recommendation_id
-    ).first()
+    rec = session.query(Recommendation).filter(Recommendation.id == recommendation_id).first()
     if rec is None:
         return {"status": "not_found"}
     if rec.status != "pending":
@@ -618,9 +755,7 @@ def apply_recommendation_action(session: Session, recommendation_id: int,
         session.commit()
     except IntegrityError:
         session.rollback()
-        rec = session.query(Recommendation).filter(
-            Recommendation.id == recommendation_id
-        ).first()
+        rec = session.query(Recommendation).filter(Recommendation.id == recommendation_id).first()
         return {
             "status": "already_handled",
             "recommendation_status": rec.status if rec else None,
@@ -633,14 +768,16 @@ def apply_recommendation_action(session: Session, recommendation_id: int,
     }
 
 
-def record_user_action(session: Session, recommendation_id: int,
-                       action: str, notes: str = None) -> UserAction:
+def record_user_action(
+    session: Session, recommendation_id: int, action: str, notes: str = None
+) -> UserAction:
     """Backward-compatible wrapper for the shared recommendation action path."""
     result = apply_recommendation_action(session, recommendation_id, action, notes)
     return result.get("user_action")
 
 
 # ── Watchlist ─────────────────────────────────────────────
+
 
 def create_watchlist_item(
     session: Session,
@@ -653,6 +790,7 @@ def create_watchlist_item(
     priority: str = "medium",
 ) -> "WatchlistItem":
     from db.models import WatchlistItem
+
     item = WatchlistItem(
         ticker=ticker.upper(),
         market=market.upper(),
@@ -671,6 +809,7 @@ def create_watchlist_item(
 def get_watchlist_items(session: Session, status: str = None) -> list:
     """Return watchlist items, optionally filtered by status."""
     from db.models import WatchlistItem
+
     q = session.query(WatchlistItem).filter(WatchlistItem.status != "archived")
     if status:
         q = q.filter(WatchlistItem.status == status)
@@ -680,7 +819,12 @@ def get_watchlist_items(session: Session, status: str = None) -> list:
 def get_watchlist_by_ticker(session: Session, ticker: str):
     """Return a watchlist item by ticker, or None."""
     from db.models import WatchlistItem
-    return session.query(WatchlistItem).filter(WatchlistItem.ticker == ticker.upper(), WatchlistItem.status != "archived").first()
+
+    return (
+        session.query(WatchlistItem)
+        .filter(WatchlistItem.ticker == ticker.upper(), WatchlistItem.status != "archived")
+        .first()
+    )
 
 
 def update_watchlist_item(session: Session, item_id: int, **kwargs):
@@ -689,8 +833,10 @@ def update_watchlist_item(session: Session, item_id: int, **kwargs):
     Empty strings are allowed (e.g. clearing watch_reason). Only keys present
     in kwargs are written; omitted keys are left unchanged.
     """
-    from db.models import WatchlistItem
     from datetime import datetime, timezone
+
+    from db.models import WatchlistItem
+
     item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
     if item:
         for k, v in kwargs.items():
@@ -704,6 +850,7 @@ def update_watchlist_item(session: Session, item_id: int, **kwargs):
 def delete_watchlist_item(session: Session, item_id: int) -> bool:
     """Archive a watchlist item while preserving its identity and history."""
     from db.models import WatchlistItem
+
     item = session.query(WatchlistItem).filter(WatchlistItem.id == item_id).first()
     if item:
         item.status = "archived"
@@ -713,6 +860,7 @@ def delete_watchlist_item(session: Session, item_id: int) -> bool:
 
 
 # ── Dashboard memo ────────────────────────────────────────
+
 
 def get_trading_discipline(session: Session) -> Optional[TradingDiscipline]:
     return session.get(TradingDiscipline, 1)

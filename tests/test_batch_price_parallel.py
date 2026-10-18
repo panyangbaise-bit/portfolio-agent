@@ -62,7 +62,7 @@ def test_get_portfolio_fetches_prices_in_parallel(monkeypatch):
     monkeypatch.setattr(tools, "get_session", lambda: FakeSession())
     monkeypatch.setattr(tools, "get_open_holdings", lambda _s: holdings)
     monkeypatch.setattr(tools, "adapter_registry", FakeRegistry())
-    monkeypatch.setattr("app.fx.get_cny_rates", lambda markets: {"US": 7.0})
+    monkeypatch.setattr("adapters.fx.get_cny_rates", lambda markets: {"US": 7.0})
 
     started = time.perf_counter()
     result = tools.get_portfolio.invoke({})

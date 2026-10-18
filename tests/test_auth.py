@@ -1,26 +1,28 @@
 """Google identity authorization and dashboard gate regression tests."""
+
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from streamlit.runtime.secrets import AttrDict
 from streamlit.runtime.scriptrunner import StopException
+from streamlit.runtime.secrets import AttrDict
 from streamlit.testing.v1 import AppTest
 
 import app.auth as auth
 
-
 OWNER = "owner@gmail.com"
-SETTINGS = {"auth": {
-    "redirect_uri": "https://portfolio.example.com/oauth2callback",
-    "cookie_secret": "x" * 64,
-    "google": {
-        "client_id": "test.apps.googleusercontent.com",
-        "client_secret": "test-secret",
-        "server_metadata_url": auth.GOOGLE_METADATA_URL,
-    },
-}}
+SETTINGS = {
+    "auth": {
+        "redirect_uri": "https://portfolio.example.com/oauth2callback",
+        "cookie_secret": "x" * 64,
+        "google": {
+            "client_id": "test.apps.googleusercontent.com",
+            "client_secret": "test-secret",
+            "server_metadata_url": auth.GOOGLE_METADATA_URL,
+        },
+    }
+}
 IDENTITY = {
     "is_logged_in": True,
     "iss": "https://accounts.google.com",
@@ -43,12 +45,22 @@ def test_allowlist_accepts_verified_google_owner_case_insensitively(monkeypatch)
     assert auth.is_authorized_user(dict(IDENTITY, email="SECOND@gmail.com"))
 
 
-@pytest.mark.parametrize("changed", [
-    {"is_logged_in": False}, {"is_logged_in": "true"},
-    {"email": "stranger@gmail.com"}, {"email": "owner@gmail.com.evil.test"},
-    {"email": None}, {"email_verified": False}, {"email_verified": "true"},
-    {"iss": "https://evil.test"}, {"iss": None}, {"sub": ""}, {"sub": None},
-])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"is_logged_in": False},
+        {"is_logged_in": "true"},
+        {"email": "stranger@gmail.com"},
+        {"email": "owner@gmail.com.evil.test"},
+        {"email": None},
+        {"email_verified": False},
+        {"email_verified": "true"},
+        {"iss": "https://evil.test"},
+        {"iss": None},
+        {"sub": ""},
+        {"sub": None},
+    ],
+)
 def test_untrusted_identity_is_denied(changed):
     assert not auth.is_authorized_user(dict(IDENTITY, **changed))
 
@@ -78,14 +90,17 @@ def test_non_google_hosted_email_cannot_rely_on_old_email_verification(monkeypat
     assert auth.is_authorized_user(dict(IDENTITY, email="owner@example.com", hd="example.com"))
 
 
-@pytest.mark.parametrize("uri,expected", [
-    ("https://portfolio.example.com/oauth2callback", True),
-    ("http://localhost:8501/oauth2callback", True),
-    ("http://portfolio.example.com/oauth2callback", False),
-    ("https://portfolio.example.com/", False),
-    ("https://user:pass@portfolio.example.com/oauth2callback", False),
-    ("https://portfolio.example.com/oauth2callback?next=evil", False),
-])
+@pytest.mark.parametrize(
+    "uri,expected",
+    [
+        ("https://portfolio.example.com/oauth2callback", True),
+        ("http://localhost:8501/oauth2callback", True),
+        ("http://portfolio.example.com/oauth2callback", False),
+        ("https://portfolio.example.com/", False),
+        ("https://user:pass@portfolio.example.com/oauth2callback", False),
+        ("https://portfolio.example.com/oauth2callback?next=evil", False),
+    ],
+)
 def test_callback_configuration_requires_secure_exact_callback(uri, expected):
     auth.st.secrets["auth"]["redirect_uri"] = uri
     assert auth.google_auth_configured() is expected
@@ -170,19 +185,22 @@ def test_explicit_local_development_opt_out(monkeypatch):
     fake.login.assert_not_called()
 
 
-@pytest.mark.parametrize("identity,visible", [
-    ({"is_logged_in": False}, False),
-    (dict(IDENTITY, email="stranger@gmail.com"), False),
-    (IDENTITY, True),
-])
+@pytest.mark.parametrize(
+    "identity,visible",
+    [
+        ({"is_logged_in": False}, False),
+        (dict(IDENTITY, email="stranger@gmail.com"), False),
+        (IDENTITY, True),
+    ],
+)
 def test_streamlit_gate_stops_private_rendering(monkeypatch, identity, visible):
     monkeypatch.setattr(auth.st, "user", AttrDict(identity))
-    app = AppTest.from_string('''
+    app = AppTest.from_string("""
 import streamlit as st
 from app.auth import require_auth
 require_auth()
 st.markdown("PRIVATE_PORTFOLIO_SENTINEL")
-''').run()
+""").run()
     assert not app.exception
     assert any(item.value == "PRIVATE_PORTFOLIO_SENTINEL" for item in app.markdown) is visible
 

@@ -5,7 +5,6 @@ import html
 import re
 from urllib.parse import quote, urlsplit
 
-
 CITATION_TOKEN = re.compile(r"\[\[cite:([^\]\s]+)\]\]")
 SOURCE_TOOLS = {"search_ticker_news", "get_market_headlines", "web_search"}
 

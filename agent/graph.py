@@ -12,18 +12,18 @@ Uses DeepSeek API via ChatOpenAI (OpenAI-compatible interface).
 import json
 from typing import Annotated, Any, Optional
 
-from typing_extensions import NotRequired, TypedDict
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
+from langgraph.graph import END, StateGraph
+from langgraph.graph.message import add_messages
+from typing_extensions import NotRequired, TypedDict
 
-from agent.llm import build_deepseek_llm
-from agent.citations import SOURCE_TOOLS, annotate_sources, resolve_citations
 from agent.access import READ_ONLY_TOOLS
+from agent.citations import SOURCE_TOOLS, annotate_sources, resolve_citations
+from agent.llm import build_deepseek_llm
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tool_guards import execute_tool_calls
 from agent.tools import ALL_TOOLS
-from app.timeutil import format_now_for_agent
+from common.time import format_now_for_agent
 from config import config
 from db.repository import get_session, log_tool_call
 
@@ -145,9 +145,14 @@ def build_agent_graph() -> StateGraph:
         # synthesis without tools so the last tool results are not dropped.
         if rounds >= max_rounds:
             response = llm.invoke(messages)
-            response = response.model_copy(update={"content": resolve_citations(
-                response.content, state.get("citation_sources") or {},
-            )})
+            response = response.model_copy(
+                update={
+                    "content": resolve_citations(
+                        response.content,
+                        state.get("citation_sources") or {},
+                    )
+                }
+            )
             return {
                 "messages": [response],
                 "tool_loop_halted": True,
@@ -156,9 +161,14 @@ def build_agent_graph() -> StateGraph:
         model = llm_read_only if state.get("read_only") else llm_with_tools
         response = model.invoke(messages)
         if not response.tool_calls:
-            response = response.model_copy(update={"content": resolve_citations(
-                response.content, state.get("citation_sources") or {},
-            )})
+            response = response.model_copy(
+                update={
+                    "content": resolve_citations(
+                        response.content,
+                        state.get("citation_sources") or {},
+                    )
+                }
+            )
         return {"messages": [response], "agent_rounds": rounds + 1}
 
     def tools_node(state: AgentState) -> dict:
@@ -175,9 +185,11 @@ def build_agent_graph() -> StateGraph:
                     pass
                 else:
                     payload = annotate_sources(payload, sources)
-                    message = message.model_copy(update={
-                        "content": json.dumps(payload, ensure_ascii=False),
-                    })
+                    message = message.model_copy(
+                        update={
+                            "content": json.dumps(payload, ensure_ascii=False),
+                        }
+                    )
             annotated.append(message)
         tool_messages = annotated
         _persist_tool_calls(state, tool_messages)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Launch the downloaded bridge with only the A2A secret from the local .env."""
+
 import argparse
 import os
 from pathlib import Path

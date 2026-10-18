@@ -112,8 +112,21 @@ def _backfill_opening_buys(conn: Connection) -> None:
 
 
 def _create_memory_tables(conn):
-    from db.models import ConversationMessage, MemoryDocument, MemoryChunk, MemoryCheckpoint, MemoryEmbedding
-    for model in (ConversationMessage, MemoryDocument, MemoryChunk, MemoryCheckpoint, MemoryEmbedding):
+    from db.models import (
+        ConversationMessage,
+        MemoryCheckpoint,
+        MemoryChunk,
+        MemoryDocument,
+        MemoryEmbedding,
+    )
+
+    for model in (
+        ConversationMessage,
+        MemoryDocument,
+        MemoryChunk,
+        MemoryCheckpoint,
+        MemoryEmbedding,
+    ):
         model.__table__.create(conn, checkfirst=True)
     conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(tokens)"))
 
@@ -202,7 +215,10 @@ MIGRATIONS = [
         )""",
     ),
     ("v9_memory", _create_memory_tables),
-    ("v9b_session_run", "ALTER TABLE agent_sessions ADD COLUMN job_run_id INTEGER REFERENCES job_runs(id)"),
+    (
+        "v9b_session_run",
+        "ALTER TABLE agent_sessions ADD COLUMN job_run_id INTEGER REFERENCES job_runs(id)",
+    ),
 ]
 
 
@@ -210,14 +226,15 @@ def migrate(engine: Engine):
     """Apply any pending migrations."""
     with engine.connect() as conn:
         # Ensure migration tracking table exists
-        conn.execute(text(
-            "CREATE TABLE IF NOT EXISTS _migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-        ))
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS _migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            )
+        )
         conn.commit()
 
         applied = {
-            row[0]
-            for row in conn.execute(text("SELECT version FROM _migrations")).fetchall()
+            row[0] for row in conn.execute(text("SELECT version FROM _migrations")).fetchall()
         }
 
         for version, step in MIGRATIONS:
@@ -228,7 +245,9 @@ def migrate(engine: Engine):
                         step(conn)
                     else:
                         conn.execute(text(step))
-                    conn.execute(text("INSERT INTO _migrations (version) VALUES (:v)"), {"v": version})
+                    conn.execute(
+                        text("INSERT INTO _migrations (version) VALUES (:v)"), {"v": version}
+                    )
                     conn.commit()
                     logger.info(f"Migration {version} applied.")
                 except Exception as e:

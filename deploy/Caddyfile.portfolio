@@ -1,5 +1,5 @@
 # Shared HTTPS origin for the Streamlit UI and A2A. Keep the upstreams local.
-portfolio.panyang666.com {
+portfolio.example.com {
     @a2a path /.well-known/agent-card.json /a2a/v1 /a2a/v1/*
     handle @a2a {
         request_body {

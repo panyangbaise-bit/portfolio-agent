@@ -1,69 +1,39 @@
 #!/usr/bin/env python3
-"""Portfolio Agent entry point — bootstrap services then launch Streamlit.
+"""Production entry point: initialize services before the first page request."""
 
-Previously bootstrap ran inside app/main.py which only executes on first
-browser page load (Streamlit's Uvicorn starts but defers script execution).
-This entry point runs all init before Streamlit so the scheduler and welcome
-notification fire immediately on service start.
-"""
-
-import sys
 import logging
+import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-)
-logger = logging.getLogger("server")
+def main() -> None:
+    from streamlit.web import cli
 
-# ── Bootstrap (runs before Streamlit) ──
+    from runtime import start_services, stop_services
 
-from db.repository import init_db, engine
-from db.migrate import migrate
-from adapters.base import registry
-from adapters.us_market import USMarketAdapter
-from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
-from adapters.crypto import CryptoAdapter
-from scheduler.cron import start_scheduler
-from notifier.telegram import send_welcome
-from a2a.server import start_a2a_server
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+    start_services(include_api=True)
+    try:
+        sys.argv = [
+            "streamlit",
+            "run",
+            str(Path(__file__).parent / "app/main.py"),
+            "--server.port",
+            "8501",
+            "--server.address",
+            "0.0.0.0",
+            "--server.headless",
+            "true",
+            "--browser.gatherUsageStats",
+            "false",
+        ]
+        cli.main()
+    finally:
+        stop_services()
 
-init_db()
-migrate(engine)
-logger.info("Database initialized and migrated.")
-from memory.indexer import start_worker, stop_worker
-import atexit
-start_worker(engine)
-atexit.register(stop_worker)
-
-registry.register("US", USMarketAdapter())
-registry.register("CN", CNMarketAdapter())
-registry.register("HK", HKMarketAdapter())
-registry.register("CRYPTO", CryptoAdapter())
-logger.info(f"Adapters registered: {registry.markets}")
-
-start_scheduler()
-logger.info("Scheduler started.")
-
-start_a2a_server()
-logger.info("A2A bootstrap done.")
-
-send_welcome()
-logger.info("Bootstrap complete. Launching Streamlit...")
-
-# ── Launch Streamlit in the same process ──
-
-import streamlit.web.cli as stcli
 
 if __name__ == "__main__":
-    sys.argv = [
-        "streamlit", "run", "app/main.py",
-        "--server.port", "8501",
-        "--server.address", "0.0.0.0",
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false",
-    ]
-    stcli.main()
+    main()

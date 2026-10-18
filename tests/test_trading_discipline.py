@@ -8,7 +8,9 @@ from db.repository import get_trading_discipline, save_trading_discipline
 
 
 def test_rules_survive_new_sessions_and_can_be_updated_or_cleared():
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         assert get_trading_discipline(db) is None
@@ -25,7 +27,9 @@ def test_rules_survive_new_sessions_and_can_be_updated_or_cleared():
 def test_migration_adds_memo_table_to_existing_database():
     from db.migrate import migrate
 
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     Base.metadata.tables["trading_discipline"].drop(engine)
     migrate(engine)
@@ -37,7 +41,9 @@ def test_migration_adds_memo_table_to_existing_database():
 
 
 def test_memo_ui_saves_and_restores_rules_on_new_page_session(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     monkeypatch.setattr("app.components.trading_discipline.get_session", lambda: Session(engine))
     source = "from app.components.trading_discipline import render_trading_discipline\nrender_trading_discipline()"

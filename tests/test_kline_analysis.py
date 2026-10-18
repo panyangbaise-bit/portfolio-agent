@@ -10,8 +10,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from agent.kline import enrich_kline
 from agent.chart_tools import annotate_kline, build_chart_payload
+from agent.kline import enrich_kline
 from agent.tool_guards import execute_tool_calls
 from app.components import kline_chart
 from db.models import AnalysisChart, Base
@@ -19,25 +19,46 @@ from db.repository import create_agent_session
 
 
 def bars(count=25):
-    return [{
-        "date": (date(2026, 9, 1) + timedelta(days=i)).isoformat(),
-        "open": 100 + i, "close": 102 + i, "low": 98 + i, "high": 104 + i,
-        "volume": (i + 1) * 100,
-    } for i in range(count)]
+    return [
+        {
+            "date": (date(2026, 9, 1) + timedelta(days=i)).isoformat(),
+            "open": 100 + i,
+            "close": 102 + i,
+            "low": 98 + i,
+            "high": 104 + i,
+            "volume": (i + 1) * 100,
+        }
+        for i in range(count)
+    ]
 
 
 def source_state(batch=False):
     data = enrich_kline(bars(), "US")
-    return {"messages": [
-        AIMessage(content="", tool_calls=[{
-            "name": "get_kline", "id": "source-1",
-            "args": {"ticker": "AAPL,600519" if batch else "AAPL",
-                     "market": "US,CN" if batch else "US", "period": "3mo"},
-        }]),
-        ToolMessage(tool_call_id="source-1", name="get_kline", content=json.dumps(
-            {"batch": True, "results": {"AAPL": data, "600519": data}} if batch else data,
-        )),
-    ]}
+    return {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "get_kline",
+                        "id": "source-1",
+                        "args": {
+                            "ticker": "AAPL,600519" if batch else "AAPL",
+                            "market": "US,CN" if batch else "US",
+                            "period": "3mo",
+                        },
+                    }
+                ],
+            ),
+            ToolMessage(
+                tool_call_id="source-1",
+                name="get_kline",
+                content=json.dumps(
+                    {"batch": True, "results": {"AAPL": data, "600519": data}} if batch else data,
+                ),
+            ),
+        ]
+    }
 
 
 def test_volume_windows_use_correct_denominators_without_mutation():
@@ -78,6 +99,7 @@ def test_zero_volume_and_nav():
 
 def test_single_and_batch_tool_results_remain_compatible(monkeypatch):
     from agent import tools
+
     adapter = SimpleNamespace(get_kline=lambda *_: bars(6))
     monkeypatch.setattr(tools, "adapter_registry", SimpleNamespace(get=lambda _: adapter))
     single = tools.get_kline.invoke({"ticker": "AAPL", "market": "US"})
@@ -89,14 +111,26 @@ def test_single_and_batch_tool_results_remain_compatible(monkeypatch):
 
 def test_cn_period_is_daily_lookback_not_candle_frequency(monkeypatch):
     from adapters import cn_market
+
     called = {}
 
     def history(**kwargs):
         called.update(kwargs)
-        return pd.DataFrame([{
-            "日期": b["date"], "开盘": b["open"], "最高": b["high"], "最低": b["low"],
-            "收盘": b["close"], "成交量": b["volume"], "成交额": 10000, "换手率": 1.2,
-        } for b in bars(100)])
+        return pd.DataFrame(
+            [
+                {
+                    "日期": b["date"],
+                    "开盘": b["open"],
+                    "最高": b["high"],
+                    "最低": b["low"],
+                    "收盘": b["close"],
+                    "成交量": b["volume"],
+                    "成交额": 10000,
+                    "换手率": 1.2,
+                }
+                for b in bars(100)
+            ]
+        )
 
     monkeypatch.setattr(cn_market.ak, "stock_zh_a_hist", history)
     result = cn_market.CNMarketAdapter()._get_stock_kline("600519", "1y")
@@ -109,11 +143,16 @@ def test_cn_period_is_daily_lookback_not_candle_frequency(monkeypatch):
 
 def test_crypto_keeps_last_daily_sample_and_matches_volume_timestamp(monkeypatch):
     from adapters import crypto
+
     t0 = 1788220800000  # 2026-09-01 UTC
-    monkeypatch.setattr(crypto.cg, "get_coin_market_chart_by_id", lambda **_: {
-        "prices": [[t0, 100], [t0 + 3600000, 102], [t0 + 86400000, 104]],
-        "total_volumes": [[t0 + 3600000, 20], [t0, 10]],
-    })
+    monkeypatch.setattr(
+        crypto.cg,
+        "get_coin_market_chart_by_id",
+        lambda **_: {
+            "prices": [[t0, 100], [t0 + 3600000, 102], [t0 + 86400000, 104]],
+            "total_volumes": [[t0 + 3600000, 20], [t0, 10]],
+        },
+    )
     result = crypto.CryptoAdapter().get_kline("BTC")
     assert len(result) == 2
     assert result[0]["price"] == 102
@@ -133,18 +172,39 @@ def test_chart_source_is_exact_and_batch_market_is_resolved():
     with pytest.raises(ValueError, match="source_tool_call_id"):
         build_chart_payload(source_state(), "invented", "AAPL", "", [], [])
     with pytest.raises(ValueError, match="标注日期"):
-        build_chart_payload(source_state(), "source-1", "AAPL", "", [
-            {"date": "2027-01-01", "price": 100, "text": "future"},
-        ], [])
+        build_chart_payload(
+            source_state(),
+            "source-1",
+            "AAPL",
+            "",
+            [
+                {"date": "2027-01-01", "price": 100, "text": "future"},
+            ],
+            [],
+        )
     with pytest.raises(ValueError, match="相同"):
-        build_chart_payload(source_state(), "source-1", "AAPL", "", [], [{
-            "kind": "support", "start_date": "2026-09-01", "end_date": "2026-09-02",
-            "start_price": 100, "end_price": 110, "text": "invalid level",
-        }])
+        build_chart_payload(
+            source_state(),
+            "source-1",
+            "AAPL",
+            "",
+            [],
+            [
+                {
+                    "kind": "support",
+                    "start_date": "2026-09-01",
+                    "end_date": "2026-09-02",
+                    "start_price": 100,
+                    "end_price": 110,
+                    "text": "invalid level",
+                }
+            ],
+        )
 
 
 def test_tool_guard_injects_state_and_chart_survives_new_db_session(tmp_path, monkeypatch):
     import agent.chart_tools as chart_tools
+
     engine = create_engine(f"sqlite:///{tmp_path / 'charts.db'}")
     Base.metadata.create_all(engine)
     monkeypatch.setattr(chart_tools, "get_session", lambda: Session(engine))
@@ -153,14 +213,35 @@ def test_tool_guard_injects_state_and_chart_survives_new_db_session(tmp_path, mo
         sid = create_agent_session(db, "manual").id
     state = source_state()
     state["session_id"] = sid
-    state["messages"].append(AIMessage(content="", tool_calls=[{
-        "id": "chart-1", "name": "annotate_kline", "args": {
-            "source_tool_call_id": "source-1", "ticker": "AAPL", "title": "Volume test",
-            "annotations": [{"date": "2026-09-06", "price": 107, "text": "量为前五根均量2倍"}],
-            "lines": [{"kind": "trend", "start_date": "2026-09-01", "end_date": "2026-09-25",
-                       "start_price": 98, "end_price": 122, "text": "低点连线"}],
-        },
-    }]))
+    state["messages"].append(
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "chart-1",
+                    "name": "annotate_kline",
+                    "args": {
+                        "source_tool_call_id": "source-1",
+                        "ticker": "AAPL",
+                        "title": "Volume test",
+                        "annotations": [
+                            {"date": "2026-09-06", "price": 107, "text": "量为前五根均量2倍"}
+                        ],
+                        "lines": [
+                            {
+                                "kind": "trend",
+                                "start_date": "2026-09-01",
+                                "end_date": "2026-09-25",
+                                "start_price": 98,
+                                "end_price": 122,
+                                "text": "低点连线",
+                            }
+                        ],
+                    },
+                }
+            ],
+        )
+    )
     assert "state" not in annotate_kline.tool_call_schema.model_json_schema()["properties"]
     output = execute_tool_calls(state, [annotate_kline], timeout=10)
     result = json.loads(output["messages"][0].content)
@@ -170,11 +251,19 @@ def test_tool_guard_injects_state_and_chart_survives_new_db_session(tmp_path, mo
         assert db.get(AnalysisChart, result["chart_id"]).session_id == sid
     assert payload["bars"] == enrich_kline(bars(), "US")
     figure = kline_chart.build_kline_figure(payload)
-    assert [trace.type for trace in figure.data] == ["candlestick", "bar", "scatter", "scatter", "scatter"]
+    assert [trace.type for trace in figure.data] == [
+        "candlestick",
+        "bar",
+        "scatter",
+        "scatter",
+        "scatter",
+    ]
     assert len(figure.layout.shapes) == 1
     assert len(figure.layout.annotations) == 2
     ui = FakeUI()
-    kline_chart.render_report("Before\n\n" + result["markdown"] + "\n\nAfter", key_prefix="test", ui=ui)
+    kline_chart.render_report(
+        "Before\n\n" + result["markdown"] + "\n\nAfter", key_prefix="test", ui=ui
+    )
     assert len(ui.figures) == 1
     assert ui.text == ["Before\n\n", "\n\nAfter"]
 
@@ -193,7 +282,9 @@ class FakeUI:
         self.figures.append(fig)
 
 
-@pytest.mark.parametrize("ref", ['not-json', '{"chart_id":"../../secret"}', '{"chart_id":"' + 'a' * 32 + '"}'])
+@pytest.mark.parametrize(
+    "ref", ["not-json", '{"chart_id":"../../secret"}', '{"chart_id":"' + "a" * 32 + '"}']
+)
 def test_invalid_or_missing_chart_preserves_surrounding_report(ref, monkeypatch):
     monkeypatch.setattr(kline_chart, "load_chart", lambda _: None)
     ui = FakeUI()
@@ -204,9 +295,16 @@ def test_invalid_or_missing_chart_preserves_surrounding_report(ref, monkeypatch)
 
 
 def test_nav_renders_line_without_fake_candles_or_volume_and_escapes_labels():
-    payload = build_chart_payload(source_state(), "source-1", "AAPL", "<b>title</b>", [
-        {"date": "2026-09-01", "price": 100, "text": '<a href="https://example.com">note</a>'},
-    ], [])
+    payload = build_chart_payload(
+        source_state(),
+        "source-1",
+        "AAPL",
+        "<b>title</b>",
+        [
+            {"date": "2026-09-01", "price": 100, "text": '<a href="https://example.com">note</a>'},
+        ],
+        [],
+    )
     payload["bars"] = [{**b, "series_kind": "nav", "volume": None} for b in payload["bars"]]
     figure = kline_chart.build_kline_figure(payload)
     assert [trace.type for trace in figure.data] == ["scatter"]
@@ -216,7 +314,8 @@ def test_nav_renders_line_without_fake_candles_or_volume_and_escapes_labels():
 
 def test_telegram_chart_references_become_readable_hints():
     from notifier.telegram import _md_to_telegram_html
-    result = _md_to_telegram_html('Before\n```kline\n{"chart_id":"' + 'a' * 32 + '"}\n```\nAfter')
+
+    result = _md_to_telegram_html('Before\n```kline\n{"chart_id":"' + "a" * 32 + '"}\n```\nAfter')
     assert "Before" in result and "After" in result
     assert "报告页面" in result
     assert "chart_id" not in result
@@ -224,15 +323,19 @@ def test_telegram_chart_references_become_readable_hints():
 
 def test_chart_chinese_labels_are_not_overwritten_by_english_fallback():
     from app.i18n import translate
+
     assert translate("zh", "chart.ohlc") == "K线"
     assert translate("en", "chart.ohlc") == "Candles"
 
 
-@pytest.mark.parametrize("locale,up,down", [
-    ("en", "#34d399", "#f87171"),
-    ("zh", "#f87171", "#34d399"),
-    ("cn", "#f87171", "#34d399"),
-])
+@pytest.mark.parametrize(
+    "locale,up,down",
+    [
+        ("en", "#34d399", "#f87171"),
+        ("zh", "#f87171", "#34d399"),
+        ("cn", "#f87171", "#34d399"),
+    ],
+)
 def test_candle_and_volume_colors_follow_page_language(locale, up, down):
     payload = build_chart_payload(source_state(), "", "AAPL", "", [], [])
     # Exercise both directions, including volume bars, on the same saved snapshot.

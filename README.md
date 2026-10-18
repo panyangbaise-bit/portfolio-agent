@@ -1,195 +1,162 @@
 # Portfolio Agent
 
-[中文文档](README_CN.md)
+[中文](README_CN.md) · [Architecture](docs/architecture.md) · [Development](CONTRIBUTING.md)
 
-An AI portfolio OS for **US / China A-share / Hong Kong / crypto** holdings. A light terminal-style Streamlit dashboard (IBM Plex Mono, black rules on white), a DeepSeek thinking-mode agent (LangGraph + tools), live market adapters, scheduled analysis, and optional Telegram alerts.
+An AI-assisted portfolio research and decision-tracking system for **US equities, China A-shares and funds, Hong Kong equities, and crypto**. It connects a real portfolio ledger to market data, a bounded LangGraph agent, scheduled analysis and source-linked investment memory.
 
-Open locally at [http://localhost:8501](http://localhost:8501) after `./run.sh`.
+The deployed application requires an authorized Google account. It supports research and manual decision tracking; it does not place broker orders.
 
-New reports include numbered source citations such as `[1]`: hover for the retrieved title and summary, and click to open the source. Repeated sources reuse their number, and links survive report history and Telegram delivery. Citations use retrieved news and web results; older reports are not retroactively annotated.
+## Product walkthrough
 
-External agents can query holdings, transactions, and analysis through **A2A + MCP** or **ChatGPT Custom GPT Actions**. Both interfaces enforce read-only access. See the [integration and deployment guide](docs/agent-interfaces.md) for the pinned bridge installer, integration tests, OpenAPI schema, and HTTPS deployment steps.
+### Portfolio dashboard
 
-## Screenshots
+CNY-normalized portfolio value, realized and unrealized return, trading discipline, and core/satellite positions. Quote prices retain their native currencies.
 
-Captured from the running app (`http://127.0.0.1:8501`, English UI).
+![Portfolio dashboard with return accounting and holdings](docs/screenshots/dashboard.png)
 
-### Dashboard
+### Analysis and operations
 
-CNY-normalized total value and P&L, pending recommendations, risk level, then **core** vs **satellite** holdings with live prices. The black square in the corner is **Ask Agent**.
+Read saved reports with source citations, inspect recommendations and tool calls, or switch to schedules and run history. Six scheduled jobs cover venue-specific market closes, news monitoring and monthly reviews.
 
-![Portfolio Dashboard](docs/screenshots/dashboard.png)
-
-### Ask Agent
-
-Global floating chat on every page. Ask about allocation, risk, or what to adjust. Multi-turn follow-ups share one session until **New chat**. Drag the **top-left** handle to resize; the composer grows with the panel.
-
-![Ask Agent](docs/screenshots/ask-agent.png)
-
-### Holdings
-
-Add positions by ticker and market, then **Edit / Delete**, **Buy / Sell** (weighted-average buys, broker-style residual cost on sells), and a full transaction ledger. Closed positions stay in history.
-
-![Holdings](docs/screenshots/holdings.png)
-
-### Watchlist
-
-Track names before you enter. Cards keep a reason and optional target range; edit the reason or delete when you are done.
-
-![Watchlist](docs/screenshots/watchlist.png)
-
-### Recommendations
-
-Pending agent suggestions with confidence, urgency, and reasoning. **Accept** or **Dismiss** here (not in Telegram). Empty state means the agent is monitoring and not spamming routine holds.
-
-![Recommendations](docs/screenshots/recommendations.png)
-
-### Operations
-
-Opens on **Analysis reports**: full reports, recommendations, and tool calls. **Schedules** lists the six recurring jobs and manual runs; **Run history** filters outcomes and opens a row's saved output. Monthly summaries and the news crontab stay collapsed until needed. Times use `APP_TIMEZONE` (default Beijing).
-
-![Operations](docs/screenshots/operations.jpg)
-
-### History
-
-Audit trail of recommendations and your actions — ticker, action, confidence, urgency, status, timestamp, and the saved rationale.
-
-![Decision History](docs/screenshots/history.png)
-
-### Telegram
-
-Optional send-only pushes when analysis finishes (plain text; Accept/Dismiss stay on the dashboard so this process never fights another bot for `getUpdates`).
-
-![Telegram notification](docs/screenshots/telegram.png)
-
-## Features
-
-- **Multi-market book** — US, CN (stocks + OTC funds/ETFs), HK, crypto; core vs satellite
-- **CNY portfolio totals** — FX-normalized market value and weights (native $ / HK$ / ¥ kept on cost and last price)
-- **DeepSeek thinking agent** — `deepseek-v4-pro`, thinking mode, `reasoning_effort=max`, LangGraph tool loop
-- **Ask Agent** — floating multi-turn chat, streaming replies, analysis report per conversation in Operations
-- **Live prices with fallbacks** — cache first, background refresh; adapters degrade instead of taking the job down
-- **Scheduled analysis** — after-market by venue, WallStreetCN news poll (holdings + headlines), monthly trade review
-- **Brave web search** — optional. The agent calls it only when WallStreetCN returns nothing relevant (`BRAVE_SEARCH_API_KEY`)
-- **Decision log** — sessions, tool calls, recommendations, and user actions in SQLite
-- **Bilingual UI** — **EN / CN** toggle in the top-right banner
-- **Optional Telegram** — startup welcome + analysis summaries
-- **Google login** — verified Google identity plus an exact email allowlist; private pages stay locked until configured
-
-## Pages
-
-| Nav | What you do |
-|---|---|
-| **Dashboard** | Snapshot KPIs and holdings tables; open Ask Agent |
-| **Holdings** | Add / edit / trade / transaction history |
-| **Watchlist** | Pre-entry tickers, reason, target range |
-| **Recommendations** | Accept or dismiss pending suggestions |
-| **Operations** | Analysis reports by default; schedules, Run Now, and run history |
-| **History** | Past recommendations and outcomes |
-
-## Deploy on Ubuntu
-
-One-shot install (venv + systemd):
-
-The installer also enables A2A and generates a private token, preserving existing tokens and endpoints. UI and A2A run in the same service. Without a domain, configure public IP access with a shared token (HTTP is unencrypted), or use an SSH tunnel. A2A defaults to loopback port 8502. See the [deployment guide](docs/agent-interfaces.md).
-
-```bash
-sudo apt update && sudo apt install -y git
-sudo git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
-cd /opt/portfolio-agent
-sudo ./deploy/setup-server.sh
-sudo nano /opt/portfolio-agent/.env   # DEEPSEEK_API_KEY
-.venv/bin/python deploy/configure-google-auth.py  # Google Web client credentials
-sudo systemctl restart portfolio-agent
-```
-
-Configure your HTTPS domain and OAuth callback using the [Google login guide](docs/google-login.md), then open that domain. Logs: `journalctl -u portfolio-agent -f`.
-
-## How to use
-
-1. **Install & configure (local)**
-   ```bash
-   pip install -r requirements.txt
-   cp .env.example .env
-   # Required: DEEPSEEK_API_KEY
-   # Optional: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, APP_TIMEZONE=Asia/Shanghai, BRAVE_SEARCH_API_KEY
-   ```
-
-2. **Start**
-   ```bash
-   ./run.sh
-   ```
-   Open http://localhost:8501.
-
-3. **Add holdings** — **Holdings → Add Position** (US / CN / HK / Crypto, core or satellite). Use **Buy / Sell** for later fills so the ledger stays consistent.
-
-4. **Watch before entry** — **Watchlist** for names you care about but do not hold yet.
-
-5. **Monitor** — **Dashboard** for CNY totals, P&L, and risk. **Ask Agent** (corner button) for ad-hoc questions.
-
-6. **Review suggestions** — **Recommendations** to Accept / Dismiss. Full trail under **History**.
-
-7. **Run analysis** — **Operations** opens on **Analysis reports**. **Schedules** has next-run times and **Run Now**. Output also lands in run history, and in Telegram when configured. News is searched on WallStreetCN first; Brave web search fills a gap only when that search has nothing relevant.
-
-## Configuration
-
-| Variable | Required | Default |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | **Yes** | — |
-| `DEEPSEEK_BASE_URL` | No | `https://api.deepseek.com/v1` |
-| `DEEPSEEK_MODEL` | No | `deepseek-v4-pro` |
-| `DEEPSEEK_MAX_TOKENS` | No | `65536` |
-| `DEEPSEEK_REASONING_EFFORT` | No | `max` |
-| `DEEPSEEK_THINKING` | No | `true` |
-| `APP_TIMEZONE` | No | `Asia/Shanghai` |
-| `NEWS_CRONTAB` | No | `0 8-22/2 * * *` (also editable in Operations) |
-| `BRAVE_SEARCH_API_KEY` | No | web search off; used only when WallStreetCN news has no relevant hit |
-| `AUTH_ENABLED` | No | `true` (disable only for local development) |
-| `AUTH_ALLOWED_EMAILS` | If auth on | Empty means deny all |
-| `TELEGRAM_BOT_TOKEN` | No | notifications off |
-| `TELEGRAM_CHAT_ID` | No | notifications off |
-| `LANGSMITH_API_KEY` | No | tracing off |
-
-Keep `AUTH_ENABLED=true` on public deployments. Configure Google OIDC secrets in `.streamlit/secrets.toml` and exact verified Gmail / Workspace emails in `AUTH_ALLOWED_EMAILS`. See the [Google login guide](docs/google-login.md). Password login has been removed. For local development only, explicitly set `AUTH_ENABLED=false` if you do not configure Google login.
-
-## Tech stack
-
-| Layer | Technology |
-|---|---|
-| UI | Streamlit 1.66+ with Google OIDC |
-| Agent | LangGraph + LangChain tools |
-| LLM | `DeepSeekChatOpenAI` → `deepseek-v4-pro` (thinking mode) |
-| Market data | yfinance, akshare, CoinGecko, WallStreetCN; Brave web search optional |
-| Persistence | SQLite + SQLAlchemy 2.0 |
-| Scheduler | APScheduler |
-| Notifications | Telegram Bot (send-only, optional) |
-| Runtime | Python 3.9+ |
-
-## Validation
-
-```bash
-PYTHONPATH=. python3 -m pytest tests -v
-```
-
-## Project structure
-
-```text
-portfolio-agent/
-├── adapters/           # Market data, WallStreetCN news, optional Brave search
-├── agent/              # LangGraph graph, prompts, tools, DeepSeek client
-├── app/                # Streamlit UI, i18n, theme
-├── db/                 # Models, repository, migrations
-├── scheduler/          # Cron jobs and manual triggers
-├── notifier/           # Telegram
-├── docs/screenshots/   # README product shots
-├── tests/
-└── .streamlit/         # toolbarMode=minimal
-```
-
-## Design documents
-
-- [Original design](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)
+![Operations workspace with a saved analysis report](docs/screenshots/operations.png)
 
 ### Investment memory
 
-Search historical recommendations, dismissal reasons, analysis reports, trades, conversations and trading rules from the **Memory** page or agent tools. SQLite full-text search works out of the box; optional Qdrant + an external embedding API adds semantic retrieval without loading a model on the server. [Setup, resource limits and historical-time behavior](docs/memory.md).
+Retrieve historical decisions, conversations, transactions and reports with source IDs and time filters. SQLite FTS5 works locally; optional Qdrant and an embedding API add semantic retrieval.
+
+![Investment memory and source-linked history](docs/screenshots/memory.png)
+
+<details>
+<summary>More product views</summary>
+
+**Holdings:** position management, weighted-average buys, residual-cost sells and the transaction ledger.
+
+![Holdings management](docs/screenshots/holdings.png)
+
+**Ask Agent:** global multi-turn chat with streaming responses; conversations appear in the analysis workspace.
+
+![Ask Agent conversation panel](docs/screenshots/ask-agent.png)
+
+</details>
+
+## Engineering highlights
+
+| Concern | Implementation |
+| --- | --- |
+| Shared business logic | UI-independent portfolio calculations in `domain/`; both UI and agent use the same accounting rules |
+| Bounded agent execution | Overall and per-tool deadlines, duplicate-call limits, round budgets, read-only external tool access |
+| Traceability | Persisted sessions, tool arguments/results, numbered source citations, recommendation decisions and immutable evidence versions |
+| Resilience | Persisted quote snapshots, background refresh deadlines, last-known FX fallback and explicit degraded-provider responses |
+| Memory consistency | Evidence capture in the business transaction; background indexing with bounded batches, retries and embedding reuse |
+| Service lifecycle | One process-level bootstrap shared by entry points; concurrent-start protection, failure cleanup and explicit shutdown |
+| Verification | Ruff lint/format, pytest behavior and UI tests, architecture import rules, GitHub Actions on Python 3.11/3.13 |
+
+See [architecture and tradeoffs](docs/architecture.md) for dependency boundaries and limitations.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[Streamlit UI] --> Agent[LangGraph agent]
+    Jobs[Scheduled jobs] --> Agent
+    API[A2A / GPT Actions] --> Agent
+    Agent --> Tools[Validated tools]
+    Tools --> Data[Market and news adapters]
+    Tools --> Ledger[(SQLite ledger)]
+    UI --> Domain[Portfolio domain]
+    Tools --> Domain
+    Ledger --> Memory[Evidence and background indexing]
+    Tools --> Search[Memory retrieval]
+    Search --> Memory
+```
+
+```text
+portfolio-agent/
+├── domain/       # Pure portfolio valuation and market conventions
+├── adapters/     # Market, news, web search and FX providers
+├── agent/        # Graph, tool contracts, execution guards and sessions
+├── app/          # Google auth, renderable views, UI components and i18n
+├── db/           # Models, repositories and migrations
+├── memory/       # Evidence capture, indexing and hybrid retrieval
+├── scheduler/    # Recurring jobs and manual triggers
+├── a2a/          # A2A and GPT Actions read-only interfaces
+├── notifier/     # Optional send-only Telegram delivery
+├── common/       # Shared time handling
+├── runtime.py    # Process initialization and resource ownership
+├── server.py     # Production entry point
+├── tests/        # Isolated regression and architecture tests
+└── deploy/       # systemd, HTTPS and integration setup
+```
+
+## Quick start
+
+Python **3.11+** is the development baseline. The UI uses Streamlit, the agent uses LangGraph/LangChain and DeepSeek's OpenAI-compatible API, and persistence uses SQLAlchemy 2.0 with SQLite.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+# Set DEEPSEEK_API_KEY in .env.
+# For local-only development without Google OIDC: AUTH_ENABLED=false
+./run.sh
+```
+
+Open [localhost:8501](http://localhost:8501). `run.sh` prefers the project virtual environment. For public access, keep `AUTH_ENABLED=true`, configure Google OIDC and an exact email allowlist using the [login guide](docs/google-login.md).
+
+1. Add positions in **Holdings**; record later fills with **Buy / Sell**.
+2. Use **Watchlist** to record pre-entry ideas and target ranges.
+3. Review portfolio totals in **Dashboard**, or ask questions with **Ask Agent**.
+4. Read **Operations → Analysis reports**; inspect **Schedules** and **Run history** for execution details.
+5. Accept or dismiss suggestions in **Recommendations**. **History** retains the decisions; **Memory** retrieves their evidence.
+
+## Configuration
+
+The complete template is [.env.example](.env.example).
+
+| Variable | Purpose / default |
+| --- | --- |
+| `DEEPSEEK_API_KEY` | Required agent API key |
+| `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` | API endpoint and model; defaults are defined in `config.py` |
+| `APP_TIMEZONE` | Display and scheduling timezone; `Asia/Shanghai` |
+| `DATABASE_URL` | Optional SQLAlchemy URL; defaults to the repository's SQLite ledger |
+| `AUTH_ENABLED`, `AUTH_ALLOWED_EMAILS` | Authentication enabled by default; empty allowlist denies all access |
+| `NEWS_CRONTAB` | News schedule; `0 8-22/2 * * *`, editable in Operations |
+| `BRAVE_SEARCH_API_KEY` | Optional web search when news retrieval has no relevant result |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Optional send-only notifications |
+| `MEMORY_VECTOR_ENABLED` | Optional semantic retrieval; disabled by default |
+| `A2A_ENABLED`, `ACTIONS_ENABLED` | Optional external interfaces, each requiring its configured token |
+
+Google client/cookie secrets belong in `.streamlit/secrets.toml`. API keys, that file and local databases are excluded from Git.
+
+## Development and checks
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+make check       # Lint, formatting and tests
+make coverage    # Test coverage report
+```
+
+The default suite ignores local `.env` credentials and uses a temporary database. Real Qdrant integration is opt-in. Dependency versions use ranges; the repository does not yet provide a complete transitive lockfile. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Deployment and integrations
+
+```bash
+sudo git clone https://github.com/YOUR_ACCOUNT/portfolio-agent.git /opt/portfolio-agent
+cd /opt/portfolio-agent
+sudo ./deploy/setup-server.sh
+sudo nano /opt/portfolio-agent/.env
+.venv/bin/python deploy/configure-google-auth.py --base-url https://portfolio.example.com
+sudo systemctl restart portfolio-agent
+```
+
+Production starts through `server.py`, initializing configured services before a browser connects. The standalone API entry point is `python -m a2a.serve`. See the guides below for OAuth, HTTPS, tokens and service configuration.
+
+- [Google login and HTTPS](docs/google-login.md)
+- [A2A, MCP bridge and ChatGPT GPT Actions](docs/agent-interfaces.md)
+- [Investment memory and Qdrant](docs/memory.md)
+- [K-line volume and annotated reports](docs/kline-analysis.md)
+- [Original design](docs/superpowers/specs/2026-07-18-portfolio-agent-design.md)
+
+## Scope and limitations
+
+This is a personal, single-process system. Multiple replicas need coordinated scheduling and shared locking. Data providers may return delayed or unavailable quotes; cached values and cost-basis fallbacks are not live-price guarantees. Tests verify software behavior, not investment returns or model accuracy.

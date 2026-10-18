@@ -1,9 +1,9 @@
+from adapters import fx as fx_module
 from app.components.currency import (
     FX_RATES,
     currency_for_market,
     fetch_cny_rates,
 )
-from app import fx as fx_module
 
 
 def test_currency_for_market_uses_declared_market_currencies():
@@ -19,7 +19,7 @@ def test_fetch_cny_rates_uses_one_for_cny_without_network_request(monkeypatch):
     def get(url, timeout):
         raise AssertionError("CNY should not make an FX request")
 
-    monkeypatch.setattr("app.fx.requests.get", get)
+    monkeypatch.setattr("adapters.fx.requests.get", get)
 
     assert fetch_cny_rates(("CN",)) == {"CN": 1.0}
 
@@ -44,7 +44,7 @@ def test_fetch_cny_rates_reads_usd_and_hkd_rates(monkeypatch):
         base = url.rsplit("/", 1)[-1]
         return Response(payloads[base])
 
-    monkeypatch.setattr("app.fx.requests.get", get)
+    monkeypatch.setattr("adapters.fx.requests.get", get)
     FX_RATES.clear()
     fx_module.FX_RATES.clear()
     fetch_cny_rates.clear()
@@ -62,7 +62,7 @@ def test_fetch_cny_rates_uses_last_successful_rate_after_request_failure(monkeyp
     def get(url, timeout):
         raise OSError("provider unavailable")
 
-    monkeypatch.setattr("app.fx.requests.get", get)
+    monkeypatch.setattr("adapters.fx.requests.get", get)
 
     assert fetch_cny_rates(("US",)) == {"US": 7.2}
 
@@ -77,6 +77,6 @@ def test_fetch_cny_rates_reuses_usd_rate_for_crypto_after_request_failure(monkey
     def get(url, timeout):
         raise OSError("provider unavailable")
 
-    monkeypatch.setattr("app.fx.requests.get", get)
+    monkeypatch.setattr("adapters.fx.requests.get", get)
 
     assert fetch_cny_rates(("CRYPTO",)) == {"CRYPTO": 7.2}

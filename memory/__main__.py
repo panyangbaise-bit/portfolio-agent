@@ -1,10 +1,13 @@
 """Maintenance: python -m memory status|backfill|index [--batches N]."""
+
 import argparse
 import json
+
 from sqlalchemy.orm import Session
-from db.repository import engine, init_db
+
 from db.migrate import migrate
-from memory.indexer import initialize, backfill_batch, index_lexical_batch, index_vector_batch
+from db.repository import engine, init_db
+from memory.indexer import backfill_batch, index_lexical_batch, index_vector_batch, initialize
 from memory.retrieval import status
 
 

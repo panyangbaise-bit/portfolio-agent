@@ -1,4 +1,5 @@
 """Manual controls must report durable outcomes and reject duplicate starts."""
+
 import threading
 
 import pytest
@@ -31,6 +32,7 @@ def test_manual_status_matches_durable_job_outcome(job_db, monkeypatch, outcome)
                 target()
             finally:
                 finished.set()
+
         return original_thread(target=run, **kwargs)
 
     monkeypatch.setattr(cron.threading, "Thread", tracked_thread)

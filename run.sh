@@ -1,7 +1,7 @@
 #!/bin/bash
 # Launch script for Portfolio Agent
 
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")"
 
@@ -18,4 +18,7 @@ if [ ! -f .env ]; then
 fi
 
 echo "🚀 Starting Streamlit..."
-python3 -m streamlit run app/main.py --server.port 8501
+if [ -x .venv/bin/python ]; then
+    exec .venv/bin/python -m streamlit run app/main.py --server.port 8501 "$@"
+fi
+exec python3 -m streamlit run app/main.py --server.port 8501 "$@"

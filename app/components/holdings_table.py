@@ -1,10 +1,11 @@
-import streamlit as st
 import pandas as pd
-from app.i18n import t
-from app.icons import heading
-from db.repository import get_session, get_open_holdings
+import streamlit as st
+
 from app.components.currency import fetch_cny_rates
 from app.components.price_fetcher import fetch_prices_batch, resolve_display_price
+from app.i18n import t
+from app.icons import heading
+from db.repository import get_open_holdings, get_session
 
 _CURRENCY_SYMBOLS = {
     "CN": "¥",
@@ -50,24 +51,22 @@ def build_holding_rows(holdings, prices, cny_rates):
             h.cost_basis,
         )
         rate = cny_rates.get(market)
-        market_value = (
-            format_cny_market_value(h.shares * price * rate)
-            if rate is not None
-            else "—"
-        )
+        market_value = format_cny_market_value(h.shares * price * rate) if rate is not None else "—"
         pnl_pct = (price / h.cost_basis - 1) * 100 if h.cost_basis else 0
 
-        rows.append({
-            t("col.name"): display,
-            t("col.ticker"): h.ticker,
-            t("col.market"): t("market." + market),
-            t("col.type"): t("position_type." + h.position_type + "_badge"),
-            t("col.shares"): f"{h.shares:.4f}",
-            t("col.cost"): format_quote(h.cost_basis, market),
-            t("col.price"): format_quote(price, market),
-            t("col.pnl"): f"{pnl_pct:+.2f}%",
-            t("col.market_value"): market_value,
-        })
+        rows.append(
+            {
+                t("col.name"): display,
+                t("col.ticker"): h.ticker,
+                t("col.market"): t("market." + market),
+                t("col.type"): t("position_type." + h.position_type + "_badge"),
+                t("col.shares"): f"{h.shares:.4f}",
+                t("col.cost"): format_quote(h.cost_basis, market),
+                t("col.price"): format_quote(price, market),
+                t("col.pnl"): f"{pnl_pct:+.2f}%",
+                t("col.market_value"): market_value,
+            }
+        )
 
     return rows
 

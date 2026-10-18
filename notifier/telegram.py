@@ -1,15 +1,14 @@
 """Telegram Bot notification sender."""
 
 import logging
-from html import escape, unescape
 import re
 import threading
-import time
 from datetime import datetime, timezone
+from html import escape, unescape
 from typing import Optional
 
+from common.time import format_display_time
 from config import config
-from app.timeutil import format_display_time
 from db.repository import apply_recommendation_action, get_session
 
 logger = logging.getLogger(__name__)
@@ -40,6 +39,7 @@ def _md_to_telegram_html(text: str) -> str:
     # Protect generated citations from the legacy emphasis/link substitutions.
     # Telegram has no hover titles, but the same source number remains clickable.
     from agent.citations import safe_source_url
+
     citations = []
 
     def citation_link(match):
@@ -52,12 +52,16 @@ def _md_to_telegram_html(text: str) -> str:
         return placeholder
 
     text = re.sub(
-        r'\[\\\[(\d+)\\\]\]\(<([^>]+)> "[^"\n]*"\)', citation_link, text,
+        r'\[\\\[(\d+)\\\]\]\(<([^>]+)> "[^"\n]*"\)',
+        citation_link,
+        text,
     )
     # Interactive chart references are only meaningful in the report UI.
     text = re.sub(
         r"^```kline\s*\n.*?\n```[ \t]*$",
-        "[标注行情图请在报告页面查看]", text, flags=re.MULTILINE | re.DOTALL,
+        "[标注行情图请在报告页面查看]",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
     )
     # --- 1. Code blocks (``` ... ```) — convert to <pre> ---
     text = re.sub(r"```(\w*)\n?(.*?)```", r"<pre>\2</pre>", text, flags=re.DOTALL)
@@ -71,9 +75,8 @@ def _md_to_telegram_html(text: str) -> str:
     # --- 4. Markdown tables → compact text representation ---
     # Match a markdown table block (header row + separator + body rows).
     # Use greedy (.+) inside outer |...| so we capture all columns.
-    table_re = re.compile(
-        r"^\|(.+)\|\n\|[-:|\s]+?\|\n((?:\|.+\|[\n\r]?)+)", re.MULTILINE
-    )
+    table_re = re.compile(r"^\|(.+)\|\n\|[-:|\s]+?\|\n((?:\|.+\|[\n\r]?)+)", re.MULTILINE)
+
     def _table_replacer(m: re.Match) -> str:
         header = m.group(1)
         body = m.group(2)
@@ -131,7 +134,7 @@ def _escape_unsafe_html(text: str) -> str:
     result = []
     last_end = 0
     for match in tag_re.finditer(text):
-        before = text[last_end:match.start()]
+        before = text[last_end : match.start()]
         result.append(before.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
         result.append(match.group())
         last_end = match.end()
@@ -166,7 +169,9 @@ def _send_message(text: str, reply_markup: Optional[dict] = None) -> bool:
             payload["parse_mode"] = ""
             resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code != 200:
-                logger.error(f"Telegram plain-text retry also failed: {resp.status_code} {resp.text}")
+                logger.error(
+                    f"Telegram plain-text retry also failed: {resp.status_code} {resp.text}"
+                )
                 return False
         else:
             logger.error(f"Telegram send failed: {resp.status_code} {resp.text}")
@@ -248,9 +253,7 @@ def send_welcome() -> bool:
 def send_deploy_notice() -> bool:
     """Notify that a deploy/restart finished (used by setup-server.sh)."""
     now = format_display_time(datetime.now(timezone.utc))
-    return notify(
-        f"🚀 <b>Portfolio Agent 已更新部署</b>\n<code>{now}</code>"
-    )
+    return notify(f"🚀 <b>Portfolio Agent 已更新部署</b>\n<code>{now}</code>")
 
 
 def send_urgent_recommendation(ticker: str, action: str, reasoning: str, confidence: float):
@@ -356,12 +359,16 @@ class TelegramCallbackPoller:
             self._answer_callback(callback_id, text)
         elif result["status"] == "reason_required":
             self._answer_callback(
-                callback_id, "Please dismiss in the dashboard and provide a reason.", show_alert=True
+                callback_id,
+                "Please dismiss in the dashboard and provide a reason.",
+                show_alert=True,
             )
         elif result["status"] == "already_handled":
             self._answer_callback(callback_id, "Recommendation was already handled.")
         else:
-            self._answer_callback(callback_id, "Recommendation is no longer available.", show_alert=True)
+            self._answer_callback(
+                callback_id, "Recommendation is no longer available.", show_alert=True
+            )
 
     def _run(self):
         import requests
@@ -398,9 +405,7 @@ def start_callback_poller():
 
     Accept/Dismiss live on the dashboard only. The poller class remains for tests.
     """
-    logger.info(
-        "Telegram callback poller disabled (send-only mode; no Accept/Dismiss via bot)."
-    )
+    logger.info("Telegram callback poller disabled (send-only mode; no Accept/Dismiss via bot).")
     return None
 
 

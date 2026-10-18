@@ -1,4 +1,5 @@
 """Durable trading rules editor, outside the dashboard's live KPI fragment."""
+
 import logging
 
 import streamlit as st

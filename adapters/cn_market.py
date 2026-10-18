@@ -1,9 +1,10 @@
-from concurrent.futures import TimeoutError as FuturesTimeout
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 import threading
 import time
+from concurrent.futures import TimeoutError as FuturesTimeout
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
 import akshare as ak
 import pandas as pd
 
@@ -126,9 +127,7 @@ class CNMarketAdapter(MarketAdapter):
         prev = df.iloc[-2] if len(df) >= 2 else latest
         change_pct = 0.0
         if latest["单位净值"] and prev["单位净值"]:
-            change_pct = round(
-                (float(latest["单位净值"]) / float(prev["单位净值"]) - 1) * 100, 2
-            )
+            change_pct = round((float(latest["单位净值"]) / float(prev["单位净值"]) - 1) * 100, 2)
         nav_date = str(latest.get("净值日期", ""))[:10] or None
         prev_nav_date = str(prev.get("净值日期", ""))[:10] or None
         return {
@@ -168,7 +167,9 @@ class CNMarketAdapter(MarketAdapter):
         days = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}.get(period, 90)
         end = datetime.now(ZoneInfo("Asia/Shanghai"))
         df = ak.stock_zh_a_hist(
-            symbol=ticker, period="daily", adjust="qfq",
+            symbol=ticker,
+            period="daily",
+            adjust="qfq",
             start_date=(end - timedelta(days=days)).strftime("%Y%m%d"),
             end_date=end.strftime("%Y%m%d"),
         )
@@ -214,8 +215,7 @@ class CNMarketAdapter(MarketAdapter):
             return {
                 "ticker": ticker,
                 "note": (
-                    "基金产品，无上市公司财报。"
-                    "请改用 get_fund_info 获取跟踪指数、费率与成分股。"
+                    "基金产品，无上市公司财报。请改用 get_fund_info 获取跟踪指数、费率与成分股。"
                 ),
             }
         try:
@@ -234,6 +234,7 @@ class CNMarketAdapter(MarketAdapter):
             return self._get_fund_info_inner(ticker, top_constituents)
         except Exception as exc:
             from adapters.safe import error_payload
+
             return error_payload(exc, ticker=ticker)
 
     def _get_fund_info_inner(self, ticker: str, top_constituents: int) -> dict:
@@ -242,7 +243,9 @@ class CNMarketAdapter(MarketAdapter):
             return {"ticker": ticker, "error": "empty ticker"}
 
         overview, ov_timeout, ov_error = run_with_timeout_or_flag(
-            self._fetch_fund_overview, _FUND_OVERVIEW_TIMEOUT, code,
+            self._fetch_fund_overview,
+            _FUND_OVERVIEW_TIMEOUT,
+            code,
         )
         if ov_timeout:
             return {
@@ -281,9 +284,7 @@ class CNMarketAdapter(MarketAdapter):
 
         notes = []
         if fund_kind == "etf_feeder":
-            notes.append(
-                "联接基金：资产以目标 ETF 为主；成分股为跟踪指数近似，非季报逐股权重。"
-            )
+            notes.append("联接基金：资产以目标 ETF 为主；成分股为跟踪指数近似，非季报逐股权重。")
         if tracked and not index_code:
             notes.append(f"未能解析跟踪指数代码，仅返回名称：{tracked}")
         elif index_code and not constituents:
@@ -333,7 +334,9 @@ class CNMarketAdapter(MarketAdapter):
             fut_fees = pool.submit(self._fetch_fund_fees_xq, code)
             fut_alloc = pool.submit(self._fetch_asset_allocation, code)
             fut_cons = pool.submit(
-                self._fetch_index_constituents, index_code, top_constituents,
+                self._fetch_index_constituents,
+                index_code,
+                top_constituents,
             )
             deadline = time.monotonic() + _FUND_ENRICH_WALL_TIMEOUT
 
@@ -363,9 +366,7 @@ class CNMarketAdapter(MarketAdapter):
             if isinstance(cons_res, tuple) and len(cons_res) == 2:
                 constituents, cons_source = cons_res
                 if not constituents and cons_source:
-                    degraded.append(
-                        f"constituents unavailable ({cons_source}) — skipped"
-                    )
+                    degraded.append(f"constituents unavailable ({cons_source}) — skipped")
         finally:
             # Do not wait for hung akshare workers after our deadlines.
             pool.shutdown(wait=False)
@@ -467,15 +468,19 @@ class CNMarketAdapter(MarketAdapter):
             return []
         rows = []
         for _, row in df.iterrows():
-            rows.append({
-                "asset_type": str(row.get("资产类型")),
-                "weight_pct": self._safe_float(row.get("仓位占比")),
-                "as_of": date,
-            })
+            rows.append(
+                {
+                    "asset_type": str(row.get("资产类型")),
+                    "weight_pct": self._safe_float(row.get("仓位占比")),
+                    "as_of": date,
+                }
+            )
         return rows
 
     def _fetch_index_constituents(
-        self, index_code: Optional[str], top_n: int,
+        self,
+        index_code: Optional[str],
+        top_n: int,
     ) -> Tuple[list, Optional[str]]:
         """Constituents: Sina first, CSI fallback — each attempt has its own timeout."""
         if not index_code:
@@ -485,7 +490,10 @@ class CNMarketAdapter(MarketAdapter):
 
         # 1) Sina newest-component (ak.index_stock_cons) — usually faster than CSI.
         df = run_with_timeout(
-            ak.index_stock_cons, source_budget, index_code, default=None,
+            ak.index_stock_cons,
+            source_budget,
+            index_code,
+            default=None,
         )
         if df is not None:
             parsed = self._parse_constituent_df(
@@ -499,13 +507,19 @@ class CNMarketAdapter(MarketAdapter):
 
         # 2) CSI official xls — historically hangs for minutes.
         df = run_with_timeout(
-            ak.index_stock_cons_csindex, source_budget, index_code, default=None,
+            ak.index_stock_cons_csindex,
+            source_budget,
+            index_code,
+            default=None,
         )
         if df is None:
             return [], "tracked_index_timeout"
         try:
             parsed = self._parse_constituent_df(
-                df, code_keys=("成分券代码",), name_keys=("成分券名称",), limit=limit,
+                df,
+                code_keys=("成分券代码",),
+                name_keys=("成分券名称",),
+                limit=limit,
             )
             if parsed:
                 return parsed, "tracked_index"
@@ -627,7 +641,9 @@ class HKMarketAdapter(MarketAdapter):
 
     def get_price(self, ticker: str) -> dict:
         import yfinance as yf
+
         from adapters.safe import error_payload
+
         try:
             symbol = self._to_yf_ticker(ticker)
             stock = yf.Ticker(symbol)
@@ -655,6 +671,7 @@ class HKMarketAdapter(MarketAdapter):
 
     def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
         import yfinance as yf
+
         try:
             symbol = self._to_yf_ticker(ticker)
             stock = yf.Ticker(symbol)
@@ -677,7 +694,9 @@ class HKMarketAdapter(MarketAdapter):
 
     def get_financials(self, ticker: str) -> dict:
         import yfinance as yf
+
         from adapters.safe import error_payload
+
         try:
             symbol = self._to_yf_ticker(ticker)
             stock = yf.Ticker(symbol)
@@ -685,7 +704,9 @@ class HKMarketAdapter(MarketAdapter):
             return {
                 "ticker": ticker.upper().replace(".HK", ""),
                 "name": info.get("longName") or info.get("shortName"),
-                "report_date": str(info.get("lastFiscalYearEnd", ""))[:10] if info.get("lastFiscalYearEnd") else None,
+                "report_date": str(info.get("lastFiscalYearEnd", ""))[:10]
+                if info.get("lastFiscalYearEnd")
+                else None,
                 "revenue": info.get("totalRevenue"),
                 "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
                 "eps": info.get("trailingEps"),
@@ -701,7 +722,9 @@ class HKMarketAdapter(MarketAdapter):
 
     def get_market_snapshot(self) -> dict:
         import yfinance as yf
+
         from adapters.safe import error_payload
+
         try:
             hsi = yf.Ticker("^HSI")
             info = hsi.fast_info

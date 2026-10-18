@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -12,25 +13,60 @@ from db.models import AgentSession, Base, JobRun
 
 @pytest.fixture
 def jobs_ui(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     now = datetime(2026, 10, 12, 12, tzinfo=timezone.utc)
     with Session(engine) as db:
-        db.add_all([
-            JobRun(job_id="hourly_news", job_name="News", status="completed", started_at=now, ended_at=now + timedelta(seconds=23), details="Long runtime output " * 100),
-            JobRun(job_id="crypto_daily", job_name="Crypto", status="failed", started_at=now - timedelta(hours=1), details="Price feed timed out"),
-            AgentSession(triggered_by="schedule", job_id="monthly_trade_review", status="completed", summary="Monthly report body", started_at=now),
-            AgentSession(triggered_by="schedule", job_id="hourly_news", status="completed", summary="Full news report body", started_at=now + timedelta(minutes=1)),
-        ])
+        db.add_all(
+            [
+                JobRun(
+                    job_id="hourly_news",
+                    job_name="News",
+                    status="completed",
+                    started_at=now,
+                    ended_at=now + timedelta(seconds=23),
+                    details="Long runtime output " * 100,
+                ),
+                JobRun(
+                    job_id="crypto_daily",
+                    job_name="Crypto",
+                    status="failed",
+                    started_at=now - timedelta(hours=1),
+                    details="Price feed timed out",
+                ),
+                AgentSession(
+                    triggered_by="schedule",
+                    job_id="monthly_trade_review",
+                    status="completed",
+                    summary="Monthly report body",
+                    started_at=now,
+                ),
+                AgentSession(
+                    triggered_by="schedule",
+                    job_id="hourly_news",
+                    status="completed",
+                    summary="Full news report body",
+                    started_at=now + timedelta(minutes=1),
+                ),
+            ]
+        )
         db.commit()
     monkeypatch.setattr(analysis_table, "get_session", lambda: Session(engine))
-    monkeypatch.setattr(analysis_table, "get_scheduler_status", lambda: [
-        {"id": jid, "next_run": now, "crontab": "0 21 * * *", "timezone": "Asia/Shanghai"}
-        for jid in analysis_table.JOB_IDS
-    ])
+    monkeypatch.setattr(
+        analysis_table,
+        "get_scheduler_status",
+        lambda: [
+            {"id": jid, "next_run": now, "crontab": "0 21 * * *", "timezone": "Asia/Shanghai"}
+            for jid in analysis_table.JOB_IDS
+        ],
+    )
     monkeypatch.setattr(analysis_table, "get_manual_run_status", lambda jid: None)
     monkeypatch.setattr(analysis_table, "get_news_crontab", lambda: "0 8-22/4 * * mon-fri")
-    app = AppTest.from_file("app/views/operations.py").run()
+    app = AppTest.from_file(
+        str(Path(__file__).resolve().parents[1] / "app/views/operations.py")
+    ).run()
     assert not app.exception
     yield app
     engine.dispose()
@@ -91,7 +127,9 @@ def test_report_workspace_keeps_monthly_collapsed_and_full_report_accessible(job
 
 def test_news_schedule_editor_still_saves_and_normalizes(jobs_ui, monkeypatch):
     saved = []
-    monkeypatch.setattr(analysis_table, "update_news_crontab", lambda expr: saved.append(expr) or expr.strip())
+    monkeypatch.setattr(
+        analysis_table, "update_news_crontab", lambda expr: saved.append(expr) or expr.strip()
+    )
     app = jobs_ui
     app.radio(key="jobs_section").set_value("schedule").run()
     app.text_input(key="news_crontab_expr").set_value(" 0 9 * * mon-fri ")

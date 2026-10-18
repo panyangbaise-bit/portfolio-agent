@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import streamlit as st
+
 from adapters.base import registry as adapter_registry
 from db.repository import get_latest_prices, get_session, upsert_price
 
@@ -58,9 +59,7 @@ def persist_cost_basis_fallbacks(holdings: list, prices: dict) -> dict:
     This guarantees a complete restart-safe portfolio snapshot from the first
     dashboard render. A later live quote overwrites the fallback for the day.
     """
-    snapshot_date = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    snapshot_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     completed_prices = dict(prices)
     session = get_session()
     try:
@@ -84,9 +83,7 @@ def persist_cost_basis_fallbacks(holdings: list, prices: dict) -> dict:
 
 def save_live_prices(prices: dict):
     """Persist successful dashboard prices as today's fallback snapshot."""
-    snapshot_date = datetime.now(timezone.utc).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
+    snapshot_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     session = get_session()
     try:
         for (market, ticker), price in prices.items():

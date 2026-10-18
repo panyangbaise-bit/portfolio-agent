@@ -83,12 +83,14 @@ class BraveSearchAdapter:
             if not title and not url:
                 continue
             description = (item.get("description") or "").replace("\n", " ").strip()
-            results.append({
-                "title": title,
-                "url": url,
-                "description": description[:_SNIPPET_CHARS],
-                "age": item.get("age") or item.get("page_age") or "",
-            })
+            results.append(
+                {
+                    "title": title,
+                    "url": url,
+                    "description": description[:_SNIPPET_CHARS],
+                    "age": item.get("age") or item.get("page_age") or "",
+                }
+            )
         return {"query": text[:400], "source": "brave", "results": results}
 
 

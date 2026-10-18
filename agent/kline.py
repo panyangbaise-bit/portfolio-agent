@@ -43,11 +43,13 @@ def enrich_kline(rows: list[dict], market: str) -> list[dict]:
         previous = volumes[-1] if volumes else None
         row["volume_ratio5"] = (
             round(volume / previous_mean, 4)
-            if volume is not None and previous_mean is not None and previous_mean > 0 else None
+            if volume is not None and previous_mean is not None and previous_mean > 0
+            else None
         )
         row["volume_change_pct"] = (
             round((volume / previous - 1) * 100, 2)
-            if volume is not None and previous is not None and previous > 0 else None
+            if volume is not None and previous is not None and previous > 0
+            else None
         )
         volumes.append(volume)
         for window in (5, 10, 20):

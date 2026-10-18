@@ -33,11 +33,7 @@ def _history_for_stream(messages: List[dict], pending: str) -> List[dict]:
         if role not in ("user", "assistant") or not content:
             continue
         history.append({"role": role, "content": content})
-    if (
-        history
-        and history[-1]["role"] == "user"
-        and history[-1]["content"] == pending
-    ):
+    if history and history[-1]["role"] == "user" and history[-1]["content"] == pending:
         history = history[:-1]
     return history
 
@@ -179,6 +175,7 @@ def render_ask_agent_chat() -> None:
                 st.markdown(msg.get("content") or "")
             else:
                 from app.components.kline_chart import render_report
+
                 render_report(msg.get("content") or "", key_prefix=f"chat_{index}", ui=st)
 
     finished_stream = False

@@ -46,7 +46,7 @@ def test_get_portfolio_weights_use_cny_not_native_sum(monkeypatch):
     monkeypatch.setattr(tools, "get_open_holdings", lambda _s: holdings)
     monkeypatch.setattr(tools, "adapter_registry", FakeRegistry())
     monkeypatch.setattr(
-        "app.fx.get_cny_rates",
+        "adapters.fx.get_cny_rates",
         lambda markets: {"CN": 1.0, "US": 7.2},
     )
 
@@ -96,7 +96,7 @@ def test_get_portfolio_returns_error_when_fx_missing(monkeypatch):
     monkeypatch.setattr(tools, "get_session", lambda: FakeSession())
     monkeypatch.setattr(tools, "get_open_holdings", lambda _s: holdings)
     monkeypatch.setattr(tools, "adapter_registry", FakeRegistry())
-    monkeypatch.setattr("app.fx.get_cny_rates", lambda markets: {})
+    monkeypatch.setattr("adapters.fx.get_cny_rates", lambda markets: {})
 
     result = tools.get_portfolio.invoke({})
     assert isinstance(result, dict)

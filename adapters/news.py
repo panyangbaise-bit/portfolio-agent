@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+
 import requests
 
 from config import config
@@ -27,7 +28,9 @@ class WallStreetCNAdapter:
         url = f"{self.BASE}/content/information-flow"
         try:
             resp = requests.get(
-                url, params={"channel": "global", "accept": "article", "limit": limit}, timeout=10,
+                url,
+                params={"channel": "global", "accept": "article", "limit": limit},
+                timeout=10,
             )
             resp.raise_for_status()
             items = resp.json().get("data", {}) or {}
@@ -76,7 +79,9 @@ class WallStreetCNAdapter:
             if pub is None:
                 continue
             try:
-                pub_ts = datetime.fromisoformat(pub).timestamp() if isinstance(pub, str) else float(pub)
+                pub_ts = (
+                    datetime.fromisoformat(pub).timestamp() if isinstance(pub, str) else float(pub)
+                )
             except (ValueError, TypeError):
                 continue
             if pub_ts >= cutoff:
@@ -86,7 +91,7 @@ class WallStreetCNAdapter:
     @staticmethod
     def _parse_items(items: list, is_hot: bool = False) -> list[dict]:
         parsed = []
-        for item in (items or []):
+        for item in items or []:
             resource = item if is_hot else item.get("resource", item)
             if resource is None:
                 continue
@@ -102,14 +107,16 @@ class WallStreetCNAdapter:
                 article_url = "https://wallstreetcn.com/articles/" + uri
             else:
                 article_url = ""
-            parsed.append({
-                "title": resource.get("title", ""),
-                "uri": resource.get("uri", ""),
-                "url": article_url,
-                "summary": (resource.get("content_short") or "")[:200],
-                "published_at": datetime.fromtimestamp(ts).isoformat() if ts else None,
-                "author": (resource.get("author") or {}).get("display_name", ""),
-            })
+            parsed.append(
+                {
+                    "title": resource.get("title", ""),
+                    "uri": resource.get("uri", ""),
+                    "url": article_url,
+                    "summary": (resource.get("content_short") or "")[:200],
+                    "published_at": datetime.fromtimestamp(ts).isoformat() if ts else None,
+                    "author": (resource.get("author") or {}).get("display_name", ""),
+                }
+            )
         return parsed
 
 

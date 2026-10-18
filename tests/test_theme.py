@@ -1,8 +1,8 @@
 from app.styles.theme import (
-    load_cyberpunk_css,
+    build_locale_toggle_html,
     build_theme_css,
     build_theme_html,
-    build_locale_toggle_html,
+    load_cyberpunk_css,
 )
 
 

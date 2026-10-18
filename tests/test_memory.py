@@ -1,24 +1,42 @@
 """Evidence durability, temporal boundaries and hybrid failure behavior."""
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, select, func, text
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from config import config
-from db.models import (Base, Holding, Transaction, AgentSession, Recommendation,
-                       MemoryDocument, MemoryChunk, TradingDiscipline, ConversationMessage)
-from db.repository import (create_holding, delete_holding, get_all_holdings, list_transactions,
-                           save_trading_discipline, apply_recommendation_action, end_agent_session)
+from db.models import (
+    AgentSession,
+    Base,
+    ConversationMessage,
+    Holding,
+    MemoryDocument,
+    Recommendation,
+    TradingDiscipline,
+    Transaction,
+)
+from db.repository import (
+    apply_recommendation_action,
+    create_holding,
+    delete_holding,
+    end_agent_session,
+    get_all_holdings,
+    list_transactions,
+    save_trading_discipline,
+)
 from memory import backends, retrieval
-from memory.indexer import initialize, backfill_batch, index_lexical_batch, index_vector_batch
+from memory.indexer import backfill_batch, index_lexical_batch, index_vector_batch, initialize
 
 
 @pytest.fixture
 def engine(monkeypatch):
     monkeypatch.setattr(config, "MEMORY_VECTOR_ENABLED", False)
-    eng = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    eng = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(eng)
     initialize(eng)
     yield eng
@@ -32,12 +50,23 @@ def index_all(engine):
 
 def seed(db):
     holding = create_holding(db, "DUOL", "US", 4, 160, name="多邻国")
-    session = AgentSession(triggered_by="manual", job_id="us_after_market", market="US", status="completed",
-                           summary="DUOL 跌破支撑，建议减仓，避免追涨杀跌。")
+    session = AgentSession(
+        triggered_by="manual",
+        job_id="us_after_market",
+        market="US",
+        status="completed",
+        summary="DUOL 跌破支撑，建议减仓，避免追涨杀跌。",
+    )
     db.add(session)
     db.commit()
-    rec = Recommendation(session_id=session.id, ticker="DUOL", action="reduce", reasoning="跌破支撑减仓",
-                         confidence=.8, urgency="high")
+    rec = Recommendation(
+        session_id=session.id,
+        ticker="DUOL",
+        action="reduce",
+        reasoning="跌破支撑减仓",
+        confidence=0.8,
+        urgency="high",
+    )
     db.add(rec)
     db.commit()
     return holding, session, rec
@@ -56,7 +85,11 @@ def test_rules_versions_and_archive_preserve_ledger(engine):
     with Session(engine) as db:
         save_trading_discipline(db, "每次开仓先确定止损")
         save_trading_discipline(db, "不要追涨")
-        docs = db.scalars(select(MemoryDocument).where(MemoryDocument.source_type == "discipline").order_by(MemoryDocument.id)).all()
+        docs = db.scalars(
+            select(MemoryDocument)
+            .where(MemoryDocument.source_type == "discipline")
+            .order_by(MemoryDocument.id)
+        ).all()
         assert len(docs) == 2
         assert docs[0].snapshot["content"] == "每次开仓先确定止损"
         assert docs[1].previous["content"] == "每次开仓先确定止损"
@@ -95,9 +128,15 @@ def test_asof_applies_to_search_read_and_linked_records(engine):
         _, _, rec = seed(db)
         cutoff = datetime.now(timezone.utc).replace(tzinfo=None)
         apply_recommendation_action(db, rec.id, "dismiss", "事后改变观点")
-        latest = db.scalars(select(MemoryDocument).where(MemoryDocument.source_type == "feedback")).one()
+        latest = db.scalars(
+            select(MemoryDocument).where(MemoryDocument.source_type == "feedback")
+        ).one()
         latest.known_at = cutoff + timedelta(days=1)
-        rid = db.scalars(select(MemoryDocument.id).where(MemoryDocument.source_type == "recommendation").order_by(MemoryDocument.id)).first()
+        rid = db.scalars(
+            select(MemoryDocument.id)
+            .where(MemoryDocument.source_type == "recommendation")
+            .order_by(MemoryDocument.id)
+        ).first()
         fid = latest.id
         db.commit()
     index_all(engine)
@@ -105,7 +144,10 @@ def test_asof_applies_to_search_read_and_linked_records(engine):
         stamp = cutoff.isoformat() + "Z"
         assert retrieval.search(db, "事后", source_types=["feedback"], as_of=stamp)["results"] == []
         assert retrieval.read(db, f"M{fid}", as_of=stamp)["status"] == "not_found"
-        assert not any(x["source_type"] == "feedback" for x in retrieval.read(db, f"M{rid}", as_of=stamp)["related_evidence"])
+        assert not any(
+            x["source_type"] == "feedback"
+            for x in retrieval.read(db, f"M{rid}", as_of=stamp)["related_evidence"]
+        )
 
 
 def test_backfill_is_restartable_and_conservative(engine):
@@ -128,12 +170,16 @@ def test_backfill_is_restartable_and_conservative(engine):
 
 def test_conversation_turns_are_separate_and_tool_results_not_reingested(engine):
     from db.models import AgentToolCall
+
     with Session(engine) as db:
         s = AgentSession(triggered_by="manual", job_id="ask_agent")
-        db.add(s); db.commit()
+        db.add(s)
+        db.commit()
         end_agent_session(db, s.id, "Q: 为什么减仓？\nA: 风险升高")
         end_agent_session(db, s.id, "Q: 什么风险？\nA: 估值和仓位", append_summary=True)
-        db.add(AgentToolCall(session_id=s.id, tool_name="search_memory", result_summary="复制的历史"))
+        db.add(
+            AgentToolCall(session_id=s.id, tool_name="search_memory", result_summary="复制的历史")
+        )
         db.commit()
         messages = db.scalars(select(ConversationMessage)).all()
         assert [m.role for m in messages] == ["user", "assistant", "user", "assistant"]
@@ -160,14 +206,17 @@ def test_timeline_pagination_has_no_duplicates_and_filters_before_limit(engine):
 def test_conversation_preserves_user_text_containing_answer_separator(engine):
     with Session(engine) as db:
         s = AgentSession(triggered_by="manual", job_id="ask_agent")
-        db.add(s); db.commit()
+        db.add(s)
+        db.commit()
         question = "请解释这个格式：\nA: 示例答案"
         db.add(ConversationMessage(session_id=s.id, role="user", content=question))
         db.commit()
         end_agent_session(db, s.id, f"Q: {question}\nA: 这是示例中的答案标签")
         messages = db.scalars(select(ConversationMessage).order_by(ConversationMessage.id)).all()
         assert [(m.role, m.content) for m in messages] == [
-            ("user", question), ("assistant", "这是示例中的答案标签")]
+            ("user", question),
+            ("assistant", "这是示例中的答案标签"),
+        ]
 
 
 def test_hybrid_failure_preserves_lexical_and_surfaces_degradation(engine, monkeypatch):
@@ -175,8 +224,10 @@ def test_hybrid_failure_preserves_lexical_and_surfaces_degradation(engine, monke
         save_trading_discipline(db, "不要追涨")
     index_all(engine)
     monkeypatch.setattr(backends, "configured", lambda: True)
+
     def broken(_):
         raise backends.BackendError("Service unavailable")
+
     monkeypatch.setattr(backends, "embed", broken)
     with Session(engine) as db:
         result = retrieval.search(db, "追涨")
@@ -189,12 +240,19 @@ def test_vector_ingestion_is_bounded_retryable_and_filters_stale_payload(engine,
         save_trading_discipline(db, "不要追涨")
     index_all(engine)
     monkeypatch.setattr(backends, "configured", lambda: True)
-    monkeypatch.setattr(backends, "embed", lambda texts: [[1., 0.] for _ in texts])
+    monkeypatch.setattr(backends, "embed", lambda texts: [[1.0, 0.0] for _ in texts])
     points = []
+
     class Client:
-        def ensure(self): pass
-        def upsert(self, batch): points.extend(batch)
-        def search(self, vector, conditions, limit): return [p["id"] for p in points]
+        def ensure(self):
+            pass
+
+        def upsert(self, batch):
+            points.extend(batch)
+
+        def search(self, vector, conditions, limit):
+            return [p["id"] for p in points]
+
     monkeypatch.setattr(backends, "Qdrant", Client)
     assert index_vector_batch(engine) == 1
     assert index_vector_batch(engine) == 0
@@ -208,8 +266,13 @@ def test_vector_ingestion_is_bounded_retryable_and_filters_stale_payload(engine,
 def test_backend_rejects_invalid_vectors_and_namespaces_models(monkeypatch):
     monkeypatch.setattr(backends, "configured", lambda: True)
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_DIMENSIONS", 2)
-    monkeypatch.setattr(backends, "request", lambda *a, **kw: {"data": [{"index": 0, "embedding": [float("nan"), 0]}]})
-    with pytest.raises(backends.BackendError): backends.embed(["test"])
+    monkeypatch.setattr(
+        backends,
+        "request",
+        lambda *a, **kw: {"data": [{"index": 0, "embedding": [float("nan"), 0]}]},
+    )
+    with pytest.raises(backends.BackendError):
+        backends.embed(["test"])
     first = backends.Qdrant().url
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_MODEL", "changed-model")
     assert backends.Qdrant().url != first
@@ -217,10 +280,18 @@ def test_backend_rejects_invalid_vectors_and_namespaces_models(monkeypatch):
 
 def test_migration_creates_memory_schema_for_existing_db(engine):
     from db.migrate import migrate
+
     with engine.begin() as conn:
-        for name in ("memory_chunks", "memory_documents", "memory_checkpoints", "conversation_messages", "memory_fts"):
+        for name in (
+            "memory_chunks",
+            "memory_documents",
+            "memory_checkpoints",
+            "conversation_messages",
+            "memory_fts",
+        ):
             conn.execute(text("DROP TABLE " + name))
-    migrate(engine); migrate(engine)
+    migrate(engine)
+    migrate(engine)
     with Session(engine) as db:
         save_trading_discipline(db, "迁移后能保存")
     index_all(engine)
@@ -229,8 +300,9 @@ def test_migration_creates_memory_schema_for_existing_db(engine):
 
 
 def test_run_and_analysis_are_linked_without_duplicating_report_text(engine, monkeypatch):
-    from memory.context import current_run_id
     from db.repository import create_agent_session, create_job_run, finish_job_run
+    from memory.context import current_run_id
+
     with Session(engine) as db:
         run = create_job_run(db, "us_after_market", "US")
         token = current_run_id.set(run.id)
@@ -240,7 +312,9 @@ def test_run_and_analysis_are_linked_without_duplicating_report_text(engine, mon
             current_run_id.reset(token)
         end_agent_session(db, sess.id, "DUOL 独一无二的分析正文")
         finish_job_run(db, run.id, "completed", "DUOL 独一无二的分析正文")
-        run_doc = db.scalars(select(MemoryDocument).where(MemoryDocument.source_type == "run")).one()
+        run_doc = db.scalars(
+            select(MemoryDocument).where(MemoryDocument.source_type == "run")
+        ).one()
         assert "独一无二" not in run_doc.body
         assert run_doc.snapshot["details"] == "DUOL 独一无二的分析正文"
         assert run_doc.relations == [{"source_type": "analysis", "source_id": sess.id}]
@@ -255,8 +329,11 @@ def test_vector_failure_records_retry_then_recovers(engine, monkeypatch):
         save_trading_discipline(db, "避免追涨")
     index_all(engine)
     monkeypatch.setattr(backends, "configured", lambda: True)
+
     class Broken:
-        def ensure(self): raise backends.BackendError("Service unavailable")
+        def ensure(self):
+            raise backends.BackendError("Service unavailable")
+
     monkeypatch.setattr(backends, "Qdrant", Broken)
     assert index_vector_batch(engine) == 1
     assert index_vector_batch(engine) == 0  # backoff, not a tight retry loop
@@ -266,11 +343,16 @@ def test_vector_failure_records_retry_then_recovers(engine, monkeypatch):
         assert doc.indexed_at is not None  # lexical index is still usable
         doc.retry_at = datetime(2000, 1, 1)
         db.commit()
+
     class Healthy:
-        def ensure(self): pass
-        def upsert(self, points): pass
+        def ensure(self):
+            pass
+
+        def upsert(self, points):
+            pass
+
     monkeypatch.setattr(backends, "Qdrant", Healthy)
-    monkeypatch.setattr(backends, "embed", lambda texts: [[1., 0.] for _ in texts])
+    monkeypatch.setattr(backends, "embed", lambda texts: [[1.0, 0.0] for _ in texts])
     assert index_vector_batch(engine) == 1
     with Session(engine) as db:
         doc = db.scalars(select(MemoryDocument)).one()
@@ -279,7 +361,9 @@ def test_vector_failure_records_retry_then_recovers(engine, monkeypatch):
 
 def test_memory_ui_search_open_and_timeline(engine, monkeypatch):
     from pathlib import Path
+
     from streamlit.testing.v1 import AppTest
+
     with Session(engine) as db:
         _, _, rec = seed(db)
         apply_recommendation_action(db, rec.id, "dismiss", "等待反弹，担心踏空")
@@ -299,10 +383,15 @@ def test_memory_ui_search_open_and_timeline(engine, monkeypatch):
 
 
 def test_tools_report_errors_instead_of_empty_evidence(monkeypatch):
-    from memory.tools import search_memory, read_memory
+    from memory.tools import read_memory, search_memory
+
     class Broken:
-        def __enter__(self): raise RuntimeError("offline")
-        def __exit__(self, *args): pass
+        def __enter__(self):
+            raise RuntimeError("offline")
+
+        def __exit__(self, *args):
+            pass
+
     monkeypatch.setattr("memory.tools.get_session", Broken)
     assert search_memory.invoke({"query": "止损"})["status"] == "error"
     assert read_memory.invoke({"evidence_id": "M1"})["status"] == "error"
@@ -310,13 +399,16 @@ def test_tools_report_errors_instead_of_empty_evidence(monkeypatch):
 
 def test_embedding_cache_avoids_duplicate_calls_across_retries(engine, monkeypatch):
     from memory.indexer import embed_cached
+
     calls = []
+
     def embed(texts):
         calls.append(texts)
-        return [[1., 0.] for _ in texts]
+        return [[1.0, 0.0] for _ in texts]
+
     monkeypatch.setattr(backends, "embed", embed)
-    assert embed_cached(engine, ["same", "same"]) == [[1., 0.], [1., 0.]]
-    assert embed_cached(engine, ["same"]) == [[1., 0.]]
+    assert embed_cached(engine, ["same", "same"]) == [[1.0, 0.0], [1.0, 0.0]]
+    assert embed_cached(engine, ["same"]) == [[1.0, 0.0]]
     assert calls == [["same"]]
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_MODEL", "new-model")
     embed_cached(engine, ["same"])
@@ -325,6 +417,7 @@ def test_embedding_cache_avoids_duplicate_calls_across_retries(engine, monkeypat
 
 def test_removed_watchlist_identity_is_not_reused(engine):
     from db.repository import create_watchlist_item, delete_watchlist_item, get_watchlist_items
+
     with Session(engine) as db:
         item = create_watchlist_item(db, "DUOL", "US", watch_reason="等待回调")
         first_id = item.id
@@ -339,6 +432,7 @@ def test_removed_watchlist_identity_is_not_reused(engine):
 
 def test_memory_chinese_labels_override_english_fallback():
     from app.i18n import translate
+
     assert translate("zh", "memory.title") == "投资记忆库"
     assert translate("zh", "action.dismiss") == "已拒绝"
 
@@ -349,13 +443,21 @@ def test_bailian_request_sends_model_dimensions_and_float_format(monkeypatch):
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_DIMENSIONS", 256)
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_SEND_DIMENSIONS", True)
     captured = []
+
     def request(method, url, **kwargs):
         captured.append(kwargs["json"])
-        return {"data": [{"index": 0, "embedding": [1.] * 256}]}
+        return {"data": [{"index": 0, "embedding": [1.0] * 256}]}
+
     monkeypatch.setattr(backends, "request", request)
     assert len(backends.embed(["历史纪律"])[0]) == 256
-    assert captured == [{"model": "qwen3.7-text-embedding-flash", "input": ["历史纪律"],
-                         "dimensions": 256, "encoding_format": "float"}]
+    assert captured == [
+        {
+            "model": "qwen3.7-text-embedding-flash",
+            "input": ["历史纪律"],
+            "dimensions": 256,
+            "encoding_format": "float",
+        }
+    ]
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_DIMENSIONS", 2048)
     with pytest.raises(backends.BackendError, match="requires"):
         backends.embed(["bad dimensions"])
@@ -368,30 +470,46 @@ def test_configured_document_batches_are_independent(engine, monkeypatch):
     monkeypatch.setattr(config, "MEMORY_BATCH_SIZE", 1)
     with Session(engine) as db:
         db.info["skip_memory_capture"] = True
-        db.add_all([Holding(ticker=f"TEST{i}", market="US", shares=1, cost_basis=1) for i in range(5)])
+        db.add_all(
+            [Holding(ticker=f"TEST{i}", market="US", shares=1, cost_basis=1) for i in range(5)]
+        )
         db.commit()
     assert backfill_batch(engine) == 3
     assert index_lexical_batch(engine) == 2
     assert backfill_batch(engine) == 2
     assert index_lexical_batch(engine) == 2
     batches = []
+
     class Healthy:
-        def ensure(self): pass
-        def upsert(self, points): batches.append(points)
+        def ensure(self):
+            pass
+
+        def upsert(self, points):
+            batches.append(points)
+
     monkeypatch.setattr(backends, "configured", lambda: True)
     monkeypatch.setattr(backends, "Qdrant", Healthy)
-    monkeypatch.setattr(backends, "embed", lambda texts: [[1., 0.] for _ in texts])
+    monkeypatch.setattr(backends, "embed", lambda texts: [[1.0, 0.0] for _ in texts])
     assert index_vector_batch(engine) == 2
     assert len({p["payload"]["document_id"] for batch in batches for p in batch}) == 2
     assert all(len(batch) == 1 for batch in batches)
     with Session(engine) as db:
-        assert db.scalar(select(func.count()).select_from(MemoryDocument).where(MemoryDocument.vector_profile.is_not(None))) == 2
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(MemoryDocument)
+                .where(MemoryDocument.vector_profile.is_not(None))
+            )
+            == 2
+        )
 
 
 def test_backend_errors_identify_service_without_exposing_secrets(monkeypatch):
     import requests
+
     def broken(*args, **kwargs):
         raise requests.ConnectionError("secret-token https://private-endpoint")
+
     monkeypatch.setattr(backends.requests, "request", broken)
     monkeypatch.setattr(backends, "configured", lambda: True)
     with pytest.raises(backends.BackendError) as embedding:

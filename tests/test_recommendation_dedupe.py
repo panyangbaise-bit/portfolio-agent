@@ -5,12 +5,12 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from db.models import Base, AgentSession
+from agent.tools import save_recommendation
+from db.models import AgentSession, Base
 from db.repository import (
     create_recommendation,
     find_similar_recommendation,
 )
-from agent.tools import save_recommendation
 
 
 def _session():
@@ -31,7 +31,13 @@ def test_find_similar_pending_same_action():
     try:
         sid = _agent_session(db)
         create_recommendation(
-            db, sid, "AAPL", "buy_add", "add on dip", 0.8, urgency="medium",
+            db,
+            sid,
+            "AAPL",
+            "buy_add",
+            "add on dip",
+            0.8,
+            urgency="medium",
         )
         hit = find_similar_recommendation(db, "AAPL", "buy_add", "high")
         assert hit is not None
@@ -46,7 +52,13 @@ def test_find_similar_recent_same_action_urgency():
     try:
         sid = _agent_session(db)
         rec = create_recommendation(
-            db, sid, "QQQ", "reduce", "too heavy", 0.7, urgency="low",
+            db,
+            sid,
+            "QQQ",
+            "reduce",
+            "too heavy",
+            0.7,
+            urgency="low",
         )
         rec.status = "dismissed"
         rec.created_at = datetime.now(timezone.utc) - timedelta(days=2)
@@ -61,14 +73,16 @@ def test_find_similar_recent_same_action_urgency():
 
 def test_save_recommendation_skips_routine_hold(monkeypatch):
     # Avoid needing a live DB engine from config for skip path
-    result = save_recommendation.invoke({
-        "ticker": "AAPL",
-        "action": "hold",
-        "reasoning": "all fine",
-        "confidence": 0.5,
-        "urgency": "low",
-        "session_id": 0,
-    })
+    result = save_recommendation.invoke(
+        {
+            "ticker": "AAPL",
+            "action": "hold",
+            "reasoning": "all fine",
+            "confidence": 0.5,
+            "urgency": "low",
+            "session_id": 0,
+        }
+    )
     assert result["status"] == "skipped_routine"
 
 
@@ -88,19 +102,27 @@ def test_save_recommendation_skips_unchanged(monkeypatch):
     try:
         sid = _agent_session(db)
         create_recommendation(
-            db, sid, "PONY", "watch", "event risk", 0.6, urgency="medium",
+            db,
+            sid,
+            "PONY",
+            "watch",
+            "event risk",
+            0.6,
+            urgency="medium",
         )
     finally:
         db.close()
 
-    result = save_recommendation.invoke({
-        "ticker": "PONY",
-        "action": "watch",
-        "reasoning": "still watching",
-        "confidence": 0.6,
-        "urgency": "medium",
-        "session_id": sid,
-    })
+    result = save_recommendation.invoke(
+        {
+            "ticker": "PONY",
+            "action": "watch",
+            "reasoning": "still watching",
+            "confidence": 0.6,
+            "urgency": "medium",
+            "session_id": sid,
+        }
+    )
     assert result["status"] == "skipped_unchanged"
     assert result["existing_id"] is not None
 
@@ -125,14 +147,16 @@ def test_save_recommendation_notifies_each_new_pending_recommendation(monkeypatc
     finally:
         db.close()
 
-    result = save_recommendation.invoke({
-        "ticker": "MSFT",
-        "action": "buy_add",
-        "reasoning": "Strong earnings trend",
-        "confidence": 0.8,
-        "urgency": "medium",
-        "session_id": sid,
-    })
+    result = save_recommendation.invoke(
+        {
+            "ticker": "MSFT",
+            "action": "buy_add",
+            "reasoning": "Strong earnings trend",
+            "confidence": 0.8,
+            "urgency": "medium",
+            "session_id": sid,
+        }
+    )
 
     assert result["status"] == "saved"
     assert sent == [result["recommendation_id"]]

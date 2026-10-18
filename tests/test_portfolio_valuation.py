@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from app.components.holdings_table import format_cny_market_value, format_quote
-from app.components.portfolio_valuation import calculate_portfolio_totals
+from domain.valuation import calculate_portfolio_totals
 
 
 def test_calculate_portfolio_totals_converts_cost_and_value_to_cny():
@@ -16,9 +16,7 @@ def test_calculate_portfolio_totals_converts_cost_and_value_to_cny():
         ("HK", "0700"): 15,
     }
 
-    totals = calculate_portfolio_totals(
-        holdings, prices, {"CN": 1.0, "US": 7.0, "HK": 0.9}
-    )
+    totals = calculate_portfolio_totals(holdings, prices, {"CN": 1.0, "US": 7.0, "HK": 0.9})
 
     assert totals["cost"] == 482.0
     assert totals["market_value"] == 526.0

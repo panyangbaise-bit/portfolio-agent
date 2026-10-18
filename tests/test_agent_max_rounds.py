@@ -13,12 +13,14 @@ def test_agent_node_force_final_after_max_rounds(monkeypatch):
             calls["with_tools"] += 1
             return AIMessage(
                 content="",
-                tool_calls=[{
-                    "name": "get_portfolio",
-                    "args": {},
-                    "id": f"t{calls['with_tools']}",
-                    "type": "tool_call",
-                }],
+                tool_calls=[
+                    {
+                        "name": "get_portfolio",
+                        "args": {},
+                        "id": f"t{calls['with_tools']}",
+                        "type": "tool_call",
+                    }
+                ],
             )
 
     class FakeLLM:
@@ -38,9 +40,7 @@ def test_agent_node_force_final_after_max_rounds(monkeypatch):
         tc = ai.tool_calls[0]
         tc_id = tc["id"] if isinstance(tc, dict) else tc.id
         return {
-            "messages": [
-                ToolMessage(content="{}", tool_call_id=tc_id, name="get_portfolio")
-            ],
+            "messages": [ToolMessage(content="{}", tool_call_id=tc_id, name="get_portfolio")],
             "tool_loop_halted": False,
         }
 
@@ -50,12 +50,14 @@ def test_agent_node_force_final_after_max_rounds(monkeypatch):
     monkeypatch.setattr(graph_mod.config, "AGENT_MAX_ROUNDS", 2)
 
     g = graph_mod.build_agent_graph()
-    out = g.invoke({
-        "messages": [HumanMessage(content="hi")],
-        "session_id": 1,
-        "triggered_by": "manual",
-        "extra_context": "",
-    })
+    out = g.invoke(
+        {
+            "messages": [HumanMessage(content="hi")],
+            "session_id": 1,
+            "triggered_by": "manual",
+            "extra_context": "",
+        }
+    )
 
     assert calls["with_tools"] == 2
     assert calls["plain"] == 1

@@ -47,7 +47,9 @@ def test_search_parses_web_results_and_sends_token(monkeypatch):
         return FakeResp()
 
     monkeypatch.setattr("adapters.brave_search.config.BRAVE_SEARCH_API_KEY", "test-token")
-    monkeypatch.setattr("adapters.brave_search.config.BRAVE_SEARCH_BASE_URL", "https://brave.test/search")
+    monkeypatch.setattr(
+        "adapters.brave_search.config.BRAVE_SEARCH_BASE_URL", "https://brave.test/search"
+    )
     monkeypatch.setattr("adapters.brave_search.requests.get", fake_get)
 
     result = BraveSearchAdapter().search("英伟达 财报", count=50, days=7)

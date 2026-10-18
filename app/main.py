@@ -1,85 +1,33 @@
-"""Streamlit entry point — initializes DB, adapters, scheduler, and serves pages."""
+"""Streamlit composition: authenticate, initialize once, then render a view."""
 
-import sys
 import logging
-import threading
+import sys
+from importlib import import_module
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 
-from db.repository import init_db, engine
-from db.migrate import migrate
-from adapters.base import registry
-from adapters.us_market import USMarketAdapter
-from adapters.cn_market import CNMarketAdapter, HKMarketAdapter
-from adapters.crypto import CryptoAdapter
-from scheduler.cron import start_scheduler, stop_scheduler
-from notifier.telegram import send_welcome
-from app.auth import require_auth, render_account_menu
+from app.auth import render_account_menu, require_auth
+from app.components.ask_agent_chat import render_ask_agent_chat
 from app.i18n import t
 from app.styles.theme import inject_cyberpunk_theme, inject_locale_toggle
+from runtime import start_services
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-# Process-lifetime bootstrap (survives Streamlit page refresh / new browser sessions).
-_PROCESS_BOOTSTRAPPED = False
-_PROCESS_LOCK = threading.Lock()
-
 # Stable nav keys so locale switches do not reset the selected page.
 NAV_ITEMS = [
-    ("dashboard", "app/views/dashboard.py"),
-    ("holdings", "app/views/holdings.py"),
-    ("watchlist", "app/views/watchlist.py"),
-    ("recommendations", "app/views/recommendations.py"),
-    ("jobs", "app/views/operations.py"),
-    ("history", "app/views/history.py"),
-    ("memory", "app/views/memory.py"),
+    ("dashboard", "app.views.dashboard"),
+    ("holdings", "app.views.holdings"),
+    ("watchlist", "app.views.watchlist"),
+    ("recommendations", "app.views.recommendations"),
+    ("jobs", "app.views.operations"),
+    ("history", "app.views.history"),
+    ("memory", "app.views.memory"),
 ]
-
-
-def init():
-    """Initialize subsystems once per server process (not per page refresh).
-
-    When launched via server.py bootstrap runs before Streamlit; on page load
-    we detect that and skip. When launched directly via `streamlit run` (dev),
-    bootstrap happens here on first page access.
-    """
-    global _PROCESS_BOOTSTRAPPED
-    with _PROCESS_LOCK:
-        if _PROCESS_BOOTSTRAPPED:
-            return
-
-        # server.py already bootstrapped in this process? skip heavy init,
-        # but still retry welcome if the pre-Streamlit notify failed.
-        if registry.markets:
-            logger.info("Bootstrap already done by server.py, skipping.")
-            _PROCESS_BOOTSTRAPPED = True
-            send_welcome()
-            return
-
-        init_db()
-        migrate(engine)
-        from memory.indexer import start_worker
-        start_worker(engine)
-        logger.info("Database initialized and migrated.")
-
-        registry.register("US", USMarketAdapter())
-        registry.register("CN", CNMarketAdapter())
-        registry.register("HK", HKMarketAdapter())
-        registry.register("CRYPTO", CryptoAdapter())
-        logger.info(f"Adapters registered: {registry.markets}")
-
-        start_scheduler()
-        logger.info("Scheduler started.")
-
-        # True process startup only — guarded again inside send_welcome().
-        # Telegram is send-only (no getUpdates poller — shared bot with OpenClaw).
-        send_welcome()
-        _PROCESS_BOOTSTRAPPED = True
-        logger.info("Process bootstrap complete.")
 
 
 def _sync_locale_from_query():
@@ -104,7 +52,7 @@ inject_locale_toggle(st.session_state["locale"])
 
 # Authenticate before initializing app subsystems or rendering private pages.
 require_auth()
-init()
+start_services()
 
 st.sidebar.markdown('<div class="pa-brand-mark">P<span> / </span>A</div>', unsafe_allow_html=True)
 st.sidebar.title(t("app.title"))
@@ -125,15 +73,9 @@ page_key = st.sidebar.radio(
     label_visibility="collapsed",
 )
 
-page_path = dict(NAV_ITEMS)[page_key]
-with open(page_path) as f:
-    exec(f.read())
-
-from app.components.ask_agent_chat import render_ask_agent_chat
+page_module = import_module(dict(NAV_ITEMS)[page_key])
+page_module.render()
 
 # Own nested vertical block so dock JS can target Ask Agent without the page.
 with st.container():
     render_ask_agent_chat()
-
-import atexit
-atexit.register(stop_scheduler)

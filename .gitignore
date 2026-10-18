@@ -41,3 +41,11 @@ Thumbs.db
 # Git worktrees
 .worktrees/
 worktrees/
+
+# Local quality reports
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/

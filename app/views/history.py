@@ -1,52 +1,60 @@
 """History — past recommendations and decision audit trail."""
 
 import streamlit as st
+
 from app.i18n import enum_label, t
 from app.icons import icon
-from app.timeutil import format_display_time
-from db.repository import get_session, get_recommendation_history
+from common.time import format_display_time
+from db.repository import get_recommendation_history, get_session
 
-st.title(t("history.title"))
-st.caption(t("history.caption"))
 
-session = get_session()
-try:
-    all_recs = get_recommendation_history(session, limit=100)
-finally:
-    session.close()
+def render() -> None:
+    """Render this page for the current Streamlit session."""
+    st.title(t("history.title"))
+    st.caption(t("history.caption"))
 
-if not all_recs:
-    st.info(t("history.empty"))
-else:
-    for rec in all_recs:
-        action_mark = {
-            "buy_add": ("up", "pa-tone-gain"),
-            "reduce": ("down", "pa-tone-loss"),
-            "hold": ("hold", "pa-tone-flat"),
-            "watch": ("watchlist", "pa-tone-watch"),
-        }
-        mark_name, mark_tone = action_mark.get(rec.action, ("note", "pa-tone-flat"))
+    session = get_session()
+    try:
+        all_recs = get_recommendation_history(session, limit=100)
+    finally:
+        session.close()
 
-        with st.container(border=True, key=f"history_{rec.id}"):
-            cols = st.columns([1, 7])
-            with cols[0]:
-                st.markdown(
-                    f'<div class="pa-action-mark {mark_tone}">{icon(mark_name)}</div>',
-                    unsafe_allow_html=True,
-                )
-            with cols[1]:
-                st.markdown(
-                    t(
-                        "history.header",
-                        ticker=rec.ticker,
-                        action=enum_label("action", rec.action),
-                        confidence=f"{rec.confidence:.0%}",
-                        urgency=enum_label("urgency", rec.urgency),
-                        status=enum_label("rec_status", rec.status),
+    if not all_recs:
+        st.info(t("history.empty"))
+    else:
+        for rec in all_recs:
+            action_mark = {
+                "buy_add": ("up", "pa-tone-gain"),
+                "reduce": ("down", "pa-tone-loss"),
+                "hold": ("hold", "pa-tone-flat"),
+                "watch": ("watchlist", "pa-tone-watch"),
+            }
+            mark_name, mark_tone = action_mark.get(rec.action, ("note", "pa-tone-flat"))
+
+            with st.container(border=True, key=f"history_{rec.id}"):
+                cols = st.columns([1, 7])
+                with cols[0]:
+                    st.markdown(
+                        f'<div class="pa-action-mark {mark_tone}">{icon(mark_name)}</div>',
+                        unsafe_allow_html=True,
                     )
-                )
-                st.caption(format_display_time(rec.created_at))
-                st.write(rec.reasoning)
-                if rec.user_action and rec.user_action.notes:
-                    st.caption(t("rec.dismiss_reason"))
-                    st.write(rec.user_action.notes)
+                with cols[1]:
+                    st.markdown(
+                        t(
+                            "history.header",
+                            ticker=rec.ticker,
+                            action=enum_label("action", rec.action),
+                            confidence=f"{rec.confidence:.0%}",
+                            urgency=enum_label("urgency", rec.urgency),
+                            status=enum_label("rec_status", rec.status),
+                        )
+                    )
+                    st.caption(format_display_time(rec.created_at))
+                    st.write(rec.reasoning)
+                    if rec.user_action and rec.user_action.notes:
+                        st.caption(t("rec.dismiss_reason"))
+                        st.write(rec.user_action.notes)
+
+
+if __name__ == "__main__":
+    render()

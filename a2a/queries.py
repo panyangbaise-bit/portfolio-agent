@@ -7,9 +7,9 @@ from datetime import date, datetime, timedelta, timezone
 
 from db.models import Holding, Transaction
 from db.repository import get_session
+from domain.markets import MARKET_CURRENCIES
 
-MARKETS = {"US", "CN", "HK", "CRYPTO"}
-CURRENCIES = {"US": "USD", "CN": "CNY", "HK": "HKD", "CRYPTO": "USD"}
+MARKETS = frozenset(MARKET_CURRENCIES)
 
 
 def _integer(value, name, default, minimum, maximum):
@@ -62,7 +62,9 @@ def read_query(operation, params=None):
             if status != "all":
                 query = query.filter(Holding.status == status)
         else:
-            query = db.query(Transaction, Holding).join(Holding).filter(Holding.status != "archived")
+            query = (
+                db.query(Transaction, Holding).join(Holding).filter(Holding.status != "archived")
+            )
             action = params.get("action")
             if action:
                 if action not in {"buy", "sell"}:
@@ -77,39 +79,71 @@ def read_query(operation, params=None):
             if start and end and start > end:
                 raise ValueError("start_date must not be after end_date")
             if start:
-                query = query.filter(Transaction.date >= datetime.combine(start, datetime.min.time()))
+                query = query.filter(
+                    Transaction.date >= datetime.combine(start, datetime.min.time())
+                )
             if end:
                 if end == date.max:
                     raise ValueError("end_date is out of range")
-                query = query.filter(Transaction.date < datetime.combine(end + timedelta(days=1), datetime.min.time()))
+                query = query.filter(
+                    Transaction.date
+                    < datetime.combine(end + timedelta(days=1), datetime.min.time())
+                )
         if ticker:
             query = query.filter(Holding.ticker == ticker)
         if market:
             query = query.filter(Holding.market == market)
         total = query.count()
-        query = query.order_by(Holding.id) if operation == "holdings" else query.order_by(Transaction.date.desc(), Transaction.id.desc())
+        query = (
+            query.order_by(Holding.id)
+            if operation == "holdings"
+            else query.order_by(Transaction.date.desc(), Transaction.id.desc())
+        )
         rows = query.offset(offset).limit(limit).all()
         if operation == "holdings":
-            items = [{
-                "holding_id": h.id, "ticker": h.ticker, "name": h.name,
-                "market": h.market, "currency": CURRENCIES.get(h.market),
-                "shares": h.shares, "cost_basis": h.cost_basis,
-                "position_type": h.position_type, "status": h.status,
-                "updated_at": _time(h.updated_at),
-            } for h in rows]
+            items = [
+                {
+                    "holding_id": h.id,
+                    "ticker": h.ticker,
+                    "name": h.name,
+                    "market": h.market,
+                    "currency": MARKET_CURRENCIES.get(h.market),
+                    "shares": h.shares,
+                    "cost_basis": h.cost_basis,
+                    "position_type": h.position_type,
+                    "status": h.status,
+                    "updated_at": _time(h.updated_at),
+                }
+                for h in rows
+            ]
         else:
-            items = [{
-                "transaction_id": txn.id, "holding_id": h.id,
-                "ticker": h.ticker, "name": h.name, "market": h.market,
-                "currency": CURRENCIES.get(h.market), "action": txn.action,
-                "shares": txn.shares, "price": txn.price,
-                "amount": round(txn.shares * txn.price, 8),
-                "date": _time(txn.date), "notes": (txn.notes or "")[:500],
-            } for txn, h in rows]
+            items = [
+                {
+                    "transaction_id": txn.id,
+                    "holding_id": h.id,
+                    "ticker": h.ticker,
+                    "name": h.name,
+                    "market": h.market,
+                    "currency": MARKET_CURRENCIES.get(h.market),
+                    "action": txn.action,
+                    "shares": txn.shares,
+                    "price": txn.price,
+                    "amount": round(txn.shares * txn.price, 8),
+                    "date": _time(txn.date),
+                    "notes": (txn.notes or "")[:500],
+                }
+                for txn, h in rows
+            ]
     return {
-        "operation": operation, "source": "portfolio_ledger", "read_only": True,
-        "as_of": datetime.now(timezone.utc).isoformat(), "timezone": "UTC",
-        "items": items, "total": total, "limit": limit, "offset": offset,
+        "operation": operation,
+        "source": "portfolio_ledger",
+        "read_only": True,
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "timezone": "UTC",
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
         "next_offset": offset + len(items) if offset + len(items) < total else None,
         "notes": "Ledger only; cost_basis is broker residual unit cost, not a live quote or total return. Amounts use each row's currency. Date filters are inclusive UTC calendar dates. Archived holdings are excluded.",
     }

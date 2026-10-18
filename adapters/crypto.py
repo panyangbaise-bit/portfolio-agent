@@ -1,10 +1,8 @@
 from datetime import datetime, timezone
-from typing import Optional
+
 from pycoingecko import CoinGeckoAPI
-import requests
 
 from adapters.base import MarketAdapter
-
 
 cg = CoinGeckoAPI()
 
@@ -75,8 +73,11 @@ class CryptoAdapter(MarketAdapter):
             for timestamp, price in sorted(prices):
                 date = datetime.fromtimestamp(timestamp / 1000, timezone.utc).strftime("%Y-%m-%d")
                 daily[date] = {
-                    "date": date, "price": price, "volume": volumes.get(timestamp),
-                    "series_kind": "price", "volume_unit": "usd",
+                    "date": date,
+                    "price": price,
+                    "volume": volumes.get(timestamp),
+                    "series_kind": "price",
+                    "volume_unit": "usd",
                     "volume_kind": "rolling_24h_turnover",
                 }
             return list(daily.values())

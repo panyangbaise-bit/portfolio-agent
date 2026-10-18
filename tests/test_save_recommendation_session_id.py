@@ -1,8 +1,10 @@
 """save_recommendation must bind to the real agent session via InjectedState."""
 
 import json
+from typing import TypedDict
 
 from langchain_core.messages import AIMessage
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -11,6 +13,11 @@ from sqlalchemy.pool import StaticPool
 from agent.tools import save_recommendation
 from db.models import Base, Recommendation
 from db.repository import create_agent_session
+
+
+class ToolState(TypedDict):
+    messages: list
+    session_id: int
 
 
 def _engine_session(monkeypatch):
@@ -68,7 +75,11 @@ def test_tool_node_injects_session_id_from_graph_state(monkeypatch):
         "session_id": sid,
     }
 
-    result = ToolNode([save_recommendation]).invoke(state)
+    graph = StateGraph(ToolState)
+    graph.add_node("tools", ToolNode([save_recommendation]))
+    graph.add_edge(START, "tools")
+    graph.add_edge("tools", END)
+    result = graph.compile().invoke(state)
     payload = json.loads(result["messages"][0].content)
     assert payload["status"] == "saved"
 

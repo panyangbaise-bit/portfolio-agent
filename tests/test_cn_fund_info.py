@@ -3,7 +3,6 @@
 import time
 
 import pandas as pd
-import pytest
 
 from adapters.cn_index_map import resolve_csi_index_code
 from adapters.cn_market import CNMarketAdapter
@@ -11,9 +10,10 @@ from adapters.cn_market import CNMarketAdapter
 
 def test_resolve_semiconductor_materials_index():
     assert resolve_csi_index_code("中证半导体材料设备主题指数") == "931865"
-    assert resolve_csi_index_code(
-        "中证半导体材料设备主题指数收益率*95%+人民币活期存款税后利率*5%"
-    ) == "931865"
+    assert (
+        resolve_csi_index_code("中证半导体材料设备主题指数收益率*95%+人民币活期存款税后利率*5%")
+        == "931865"
+    )
 
 
 def test_resolve_hs300():
@@ -25,43 +25,53 @@ def test_resolve_unknown_returns_none():
 
 
 def _overview_df():
-    return pd.DataFrame([{
-        "基金全称": "华夏中证半导体材料设备主题交易型开放式指数证券投资基金发起式联接基金",
-        "基金简称": "华夏半导体材料设备ETF联接C",
-        "基金代码": "020357（前端）",
-        "基金类型": "指数型-股票",
-        "发行日期": "2023年12月21日",
-        "成立日期/规模": "2024年01月23日 / 0.113亿份",
-        "净资产规模": "15.70亿元",
-        "份额规模": "7.905亿份",
-        "基金管理人": "华夏基金",
-        "基金托管人": "中信建投",
-        "基金经理人": "单宽之",
-        "成立来分红": "每份累计0.00元（0次）",
-        "管理费率": "0.50%（每年）",
-        "托管费率": "0.10%（每年）",
-        "销售服务费率": "0.30%（每年）",
-        "最高认购费率": "0.00%（前端）",
-        "最高申购费率": "0.00%（前端）",
-        "最高赎回费率": "1.50%（前端）",
-        "业绩比较基准": "中证半导体材料设备主题指数收益率*95%+人民币活期存款税后利率*5%",
-        "跟踪标的": "中证半导体材料设备主题指数",
-    }])
+    return pd.DataFrame(
+        [
+            {
+                "基金全称": "华夏中证半导体材料设备主题交易型开放式指数证券投资基金发起式联接基金",
+                "基金简称": "华夏半导体材料设备ETF联接C",
+                "基金代码": "020357（前端）",
+                "基金类型": "指数型-股票",
+                "发行日期": "2023年12月21日",
+                "成立日期/规模": "2024年01月23日 / 0.113亿份",
+                "净资产规模": "15.70亿元",
+                "份额规模": "7.905亿份",
+                "基金管理人": "华夏基金",
+                "基金托管人": "中信建投",
+                "基金经理人": "单宽之",
+                "成立来分红": "每份累计0.00元（0次）",
+                "管理费率": "0.50%（每年）",
+                "托管费率": "0.10%（每年）",
+                "销售服务费率": "0.30%（每年）",
+                "最高认购费率": "0.00%（前端）",
+                "最高申购费率": "0.00%（前端）",
+                "最高赎回费率": "1.50%（前端）",
+                "业绩比较基准": "中证半导体材料设备主题指数收益率*95%+人民币活期存款税后利率*5%",
+                "跟踪标的": "中证半导体材料设备主题指数",
+            }
+        ]
+    )
 
 
 def test_get_fund_info_020357_shape(monkeypatch):
-    fees = pd.DataFrame([
-        {"费用类型": "其他费用", "条件或名称": "基金管理费", "费用": 0.5},
-        {"费用类型": "其他费用", "条件或名称": "基金托管费", "费用": 0.1},
-    ])
-    alloc = pd.DataFrame([
-        {"资产类型": "股票", "仓位占比": 4.01},
-        {"资产类型": "其他", "仓位占比": 92.70},
-    ])
-    cons = pd.DataFrame([
-        {"品种代码": "002371", "品种名称": "北方华创"},
-        {"品种代码": "688981", "品种名称": "中芯国际"},
-    ])
+    fees = pd.DataFrame(
+        [
+            {"费用类型": "其他费用", "条件或名称": "基金管理费", "费用": 0.5},
+            {"费用类型": "其他费用", "条件或名称": "基金托管费", "费用": 0.1},
+        ]
+    )
+    alloc = pd.DataFrame(
+        [
+            {"资产类型": "股票", "仓位占比": 4.01},
+            {"资产类型": "其他", "仓位占比": 92.70},
+        ]
+    )
+    cons = pd.DataFrame(
+        [
+            {"品种代码": "002371", "品种名称": "北方华创"},
+            {"品种代码": "688981", "品种名称": "中芯国际"},
+        ]
+    )
 
     monkeypatch.setattr("adapters.cn_market.ak.fund_overview_em", lambda symbol: _overview_df())
     monkeypatch.setattr(
@@ -111,10 +121,12 @@ def test_get_fund_info_uses_overview_fees_when_xq_hangs(monkeypatch):
         return pd.DataFrame()
 
     monkeypatch.setattr(
-        "adapters.cn_market.ak.fund_individual_detail_info_xq", _hang_fees,
+        "adapters.cn_market.ak.fund_individual_detail_info_xq",
+        _hang_fees,
     )
     monkeypatch.setattr(
-        "adapters.cn_market.ak.fund_individual_detail_hold_xq", _hang_alloc,
+        "adapters.cn_market.ak.fund_individual_detail_hold_xq",
+        _hang_alloc,
     )
     monkeypatch.setattr("adapters.cn_market.ak.index_stock_cons", _hang_cons)
     monkeypatch.setattr("adapters.cn_market.ak.index_stock_cons_csindex", _hang_cons)
@@ -165,9 +177,11 @@ def test_constituents_fallback_to_csindex(monkeypatch):
     )
     monkeypatch.setattr(
         "adapters.cn_market.ak.index_stock_cons_csindex",
-        lambda symbol: pd.DataFrame([
-            {"成分券代码": "002371", "成分券名称": "北方华创"},
-        ]),
+        lambda symbol: pd.DataFrame(
+            [
+                {"成分券代码": "002371", "成分券名称": "北方华创"},
+            ]
+        ),
     )
 
     info = CNMarketAdapter().get_fund_info("020357", top_constituents=5)

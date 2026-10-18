@@ -1,9 +1,17 @@
 from datetime import datetime, timezone
 from typing import Optional
+
 from sqlalchemy import (
-    String, Float, DateTime, ForeignKey, Text, JSON, Index, UniqueConstraint,
+    JSON,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _utcnow():
@@ -29,7 +37,9 @@ class Holding(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    transactions = relationship("Transaction", back_populates="holding", cascade="all, delete-orphan")
+    transactions = relationship(
+        "Transaction", back_populates="holding", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Holding(id={self.id}, ticker='{self.ticker}')>"
@@ -76,9 +86,7 @@ class PriceCache(Base):
 
 class NewsArticle(Base):
     __tablename__ = "news_articles"
-    __table_args__ = (
-        Index("ix_news_ticker_published", "ticker", "published_at"),
-    )
+    __table_args__ = (Index("ix_news_ticker_published", "ticker", "published_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ticker: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -117,15 +125,21 @@ class AgentSession(Base):
     triggered_by: Mapped[str] = mapped_column(String(20), nullable=False)
     job_id: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     market: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
-    job_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("job_runs.id"), nullable=True, index=True)
+    job_run_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("job_runs.id"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
     news_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    tool_calls = relationship("AgentToolCall", back_populates="session", cascade="all, delete-orphan")
-    recommendations = relationship("Recommendation", back_populates="session", cascade="all, delete-orphan")
+    tool_calls = relationship(
+        "AgentToolCall", back_populates="session", cascade="all, delete-orphan"
+    )
+    recommendations = relationship(
+        "Recommendation", back_populates="session", cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<AgentSession(id={self.id}, triggered_by='{self.triggered_by}', job_id='{self.job_id}')>"
@@ -133,10 +147,9 @@ class AgentSession(Base):
 
 class JobRun(Base):
     """Durable outcome record for every scheduler invocation."""
+
     __tablename__ = "job_runs"
-    __table_args__ = (
-        Index("ix_job_runs_job_started", "job_id", "started_at"),
-    )
+    __table_args__ = (Index("ix_job_runs_job_started", "job_id", "started_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -154,7 +167,9 @@ class AgentToolCall(Base):
     __tablename__ = "agent_tool_calls"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("agent_sessions.id"), nullable=False, index=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_sessions.id"), nullable=False, index=True
+    )
     tool_name: Mapped[str] = mapped_column(String(50), nullable=False)
     params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -168,6 +183,7 @@ class AgentToolCall(Base):
 
 class AnalysisChart(Base):
     """Immutable report figure, including the exact tool-data snapshot."""
+
     __tablename__ = "analysis_charts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -184,7 +200,9 @@ class Recommendation(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    session_id: Mapped[int] = mapped_column(ForeignKey("agent_sessions.id"), nullable=False, index=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("agent_sessions.id"), nullable=False, index=True
+    )
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     reasoning: Mapped[str] = mapped_column(Text, nullable=False)
@@ -194,7 +212,9 @@ class Recommendation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     session = relationship("AgentSession", back_populates="recommendations")
-    user_action = relationship("UserAction", back_populates="recommendation", uselist=False, cascade="all, delete-orphan")
+    user_action = relationship(
+        "UserAction", back_populates="recommendation", uselist=False, cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Recommendation(id={self.id}, ticker='{self.ticker}', action='{self.action}')>"
@@ -207,6 +227,7 @@ class WatchlistItem(Base):
     monitoring status. The agent can query this list to help judge entry
     timing. When the user buys in, the item can be converted to a Holding.
     """
+
     __tablename__ = "watchlist_items"
     __table_args__ = (
         Index("ix_watchlist_status", "status"),
@@ -233,7 +254,9 @@ class UserAction(Base):
     __tablename__ = "user_actions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    recommendation_id: Mapped[int] = mapped_column(ForeignKey("recommendations.id"), nullable=False, unique=True)
+    recommendation_id: Mapped[int] = mapped_column(
+        ForeignKey("recommendations.id"), nullable=False, unique=True
+    )
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     acted_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
@@ -246,6 +269,7 @@ class UserAction(Base):
 
 class TradingDiscipline(Base):
     """Shared dashboard memo, persisted as a single document."""
+
     __tablename__ = "trading_discipline"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -268,6 +292,7 @@ class MemoryDocument(Base):
     Content/metadata never change. Only processing state may change. A source
     can have many versions; IDs also serve as stable evidence references.
     """
+
     __tablename__ = "memory_documents"
     __table_args__ = (Index("ix_memory_source", "source_type", "source_id", "id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -303,6 +328,7 @@ class MemoryChunk(Base):
 
 class MemoryEmbedding(Base):
     """Reusable embedding cache across retries and identical source chunks."""
+
     __tablename__ = "memory_embeddings"
     profile: Mapped[str] = mapped_column(String(64), primary_key=True)
     content_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -316,5 +342,6 @@ class MemoryCheckpoint(Base):
 
 
 # Install once for every ORM write path, including UI and agent tools.
-from memory.capture import install_capture
+from memory.capture import install_capture  # noqa: E402 — register after models exist
+
 install_capture()

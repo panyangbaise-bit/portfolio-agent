@@ -2,22 +2,22 @@
 
 页面只允许 `.env` 中 `AUTH_ALLOWED_EMAILS` 列出的 Google 账号访问。密码登录已删除；旧 `AUTH_PASSWORD`、IP 黑名单、`auth_ok` 会话标记不再用于鉴权。默认启用认证，缺少配置或白名单时拒绝访问。仅本机开发可以显式设置 `AUTH_ENABLED=false`。
 
-当前部署使用 `https://portfolio.panyang666.com`，授权账号为 `panyangbaise@gmail.com`。无需新的域名或端口。A2A 的 Bearer token 不受影响。Google 负责账号认证，页面在每次运行时重新检查邮箱授权，不能以“任意 Google 账号已登录”作为访问依据。
+以下示例使用 `https://portfolio.example.com`，授权账号以 `owner@example.com` 表示。部署时请替换示例域名和邮箱。无需新的域名或端口。A2A 的 Bearer token 不受影响。Google 负责账号认证，页面在每次运行时重新检查邮箱授权，不能以“任意 Google 账号已登录”作为访问依据。
 
 ## 1. 创建 Google 登录客户端
 
 在 [Google Cloud Console](https://console.cloud.google.com/) 创建或选择项目，进入 **Google Auth Platform**：
 
-1. **Branding**：应用名填 `Portfolio Agent`，支持和联系邮箱填你的邮箱；如要求授权域名，填 `panyang666.com`。
-2. **Audience**：个人 Gmail 账号选择 **External**。可先保留 Testing；如显示 Test users，添加 `panyangbaise@gmail.com`。
+1. **Branding**：应用名填 `Portfolio Agent`，支持和联系邮箱填你的邮箱；如要求授权域名，填 `example.com`。
+2. **Audience**：个人 Gmail 账号选择 **External**。可先保留 Testing；如显示 Test users，添加 `owner@example.com`。
 3. **Data Access**：只使用 `openid`、`email`、`profile` 身份权限，不申请 Gmail、Drive、离线访问等权限。
 4. **Clients → Create client**：类型选 **Web application**。授权重定向 URI 必须逐字填写：
 
    ```text
-   https://portfolio.panyang666.com/oauth2callback
+   https://portfolio.example.com/oauth2callback
    ```
 
-   本方案使用服务端重定向，不需要 JavaScript origins；如果填写，使用 `https://portfolio.panyang666.com`，不带路径。
+   本方案使用服务端重定向，不需要 JavaScript origins；如果填写，使用 `https://portfolio.example.com`，不带路径。
 5. 保存 Client ID 和 Client Secret。Client Secret 不要发到聊天、提交到 Git 或放进命令行参数。
 
 本应用只请求基本身份权限；Google 官方说明这类请求不受 Testing 状态通常的 7 天授权到期限制。不需要每周更换 Client Secret。[Google Audience 说明](https://support.google.com/cloud/answer/15549945?hl=en)
@@ -32,8 +32,8 @@
 cd /opt/portfolio-agent
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python deploy/configure-google-auth.py \
-  --base-url https://portfolio.panyang666.com \
-  --email panyangbaise@gmail.com
+  --base-url https://portfolio.example.com \
+  --email owner@example.com
 ```
 
 按提示输入 Client ID 和 Client Secret。密钥输入不回显。脚本将：
@@ -57,7 +57,7 @@ sudo systemctl status portfolio-agent --no-pager
 ## 3. 验收
 
 1. 无痕窗口访问网站，应只显示 Google 登录按钮，不显示资产、导航或密码框。
-2. 使用 `panyangbaise@gmail.com` 登录，应进入页面，侧边栏显示邮箱和“退出登录”。
+2. 使用 `owner@example.com` 登录，应进入页面，侧边栏显示邮箱和“退出登录”。
 3. 换用其他 Google 账号，应该显示“没有访问权限”，不能读取任何页面数据。
 4. 退出后当前页面回到登录状态；使用无痕窗口再次访问仍需登录。
 5. 运行 `node deploy/test-a2a-mcp.mjs`，确认独立的 A2A 通道可用。
@@ -74,7 +74,7 @@ sudo systemctl status portfolio-agent --no-pager
 
 - Streamlit 使用签名身份 Cookie，默认可保留登录约 30 天；不会每次打开页面都要求重新授权。Google 的短期 ID token 有效期与网站登录 Cookie 不是一回事。退出会清除当前浏览器 Cookie，但其他已经打开的会话仍可能保持登录；移除白名单并重启服务会终止这些会话。[Streamlit 认证说明](https://docs.streamlit.io/develop/concepts/connections/authentication)
 - 浏览器需要能连接 Google 登录服务，服务器也需要能连接 Google 的身份验证端点。域名和 HTTPS 本身不会解决中国大陆网络访问 Google 的限制。
-- `redirect_uri_mismatch`：检查 Google 客户端和 secrets 文件是否都使用完整的 `https://portfolio.panyang666.com/oauth2callback`，没有多余斜杠或端口。
+- `redirect_uri_mismatch`：检查 Google 客户端和 secrets 文件是否都使用完整的 `https://portfolio.example.com/oauth2callback`，没有多余斜杠或端口。
 - “登录尚未配置完成”：检查授权邮箱、secrets 文件位置、文件权限，以及服务的工作目录是否为 `/opt/portfolio-agent`；不要通过关闭认证来修复。
 - 正确邮箱仍被拒绝：要求 Google 验证过的 Gmail 或 Google Workspace 身份，且邮箱完全匹配白名单。第三方邮箱注册的 Google 账号不能仅凭 `email_verified` 获得访问权。[Google 邮箱权威性说明](https://developers.google.com/identity/sign-in/web/backend-auth)
 - 登录后回到登录页：检查浏览器是否禁用 Cookie、HTTPS 地址是否一致、服务器时间是否正确；查看 `journalctl -u portfolio-agent`。日志可能含 OAuth 回调参数，分享前应移除凭据和授权码。

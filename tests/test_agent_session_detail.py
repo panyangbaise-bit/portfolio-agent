@@ -3,8 +3,11 @@
 from contextlib import nullcontext
 from types import SimpleNamespace
 
-from app.components import analysis_table
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
+
 from agent.graph import _truncate_result
+from app.components import analysis_table
 from db.models import Base
 from db.repository import (
     create_agent_session,
@@ -13,8 +16,6 @@ from db.repository import (
     list_analysis_runs,
     log_tool_call,
 )
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
 
 
 def _session():

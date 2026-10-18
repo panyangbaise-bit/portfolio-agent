@@ -63,13 +63,15 @@ def test_callback_poller_applies_authorized_recommendation_action(monkeypatch):
         lambda callback_id, text, show_alert=False: answers.append((callback_id, text, show_alert)),
     )
 
-    poller.process_update({
-        "callback_query": {
-            "id": "callback-1",
-            "data": "rec:42:accept",
-            "message": {"chat": {"id": 123}},
-        },
-    })
+    poller.process_update(
+        {
+            "callback_query": {
+                "id": "callback-1",
+                "data": "rec:42:accept",
+                "message": {"chat": {"id": 123}},
+            },
+        }
+    )
 
     assert actions == [(42, "accept")]
     assert answers == [("callback-1", "Recommendation accepted.", False)]
@@ -86,12 +88,14 @@ def test_callback_poller_rejects_callbacks_from_other_chats(monkeypatch):
         lambda callback_id, text, show_alert=False: answers.append((callback_id, text, show_alert)),
     )
 
-    poller.process_update({
-        "callback_query": {
-            "id": "callback-2",
-            "data": "rec:42:dismiss",
-            "message": {"chat": {"id": 999}},
-        },
-    })
+    poller.process_update(
+        {
+            "callback_query": {
+                "id": "callback-2",
+                "data": "rec:42:dismiss",
+                "message": {"chat": {"id": 999}},
+            },
+        }
+    )
 
     assert answers == [("callback-2", "Unauthorized callback.", True)]

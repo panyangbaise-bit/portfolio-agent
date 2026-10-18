@@ -40,21 +40,25 @@ def test_count_fingerprint_in_messages():
     msgs = [
         AIMessage(
             content="",
-            tool_calls=[{
-                "name": "get_price",
-                "args": {"ticker": "AAPL"},
-                "id": "1",
-                "type": "tool_call",
-            }],
+            tool_calls=[
+                {
+                    "name": "get_price",
+                    "args": {"ticker": "AAPL"},
+                    "id": "1",
+                    "type": "tool_call",
+                }
+            ],
         ),
         AIMessage(
             content="",
-            tool_calls=[{
-                "name": "get_price",
-                "args": {"ticker": "AAPL"},
-                "id": "2",
-                "type": "tool_call",
-            }],
+            tool_calls=[
+                {
+                    "name": "get_price",
+                    "args": {"ticker": "AAPL"},
+                    "id": "2",
+                    "type": "tool_call",
+                }
+            ],
         ),
     ]
     assert count_fingerprint_in_messages(msgs, fp) == 2
@@ -93,12 +97,14 @@ def test_execute_tool_calls_survives_provider_exception():
         "messages": [
             AIMessage(
                 content="",
-                tool_calls=[{
-                    "name": "boom_tool",
-                    "args": {"text": "x"},
-                    "id": "c1",
-                    "type": "tool_call",
-                }],
+                tool_calls=[
+                    {
+                        "name": "boom_tool",
+                        "args": {"text": "x"},
+                        "id": "c1",
+                        "type": "tool_call",
+                    }
+                ],
             ),
         ],
         "session_id": 1,
@@ -115,12 +121,14 @@ def test_execute_tool_calls_runs_tool():
             HumanMessage(content="hi"),
             AIMessage(
                 content="",
-                tool_calls=[{
-                    "name": "fast_echo",
-                    "args": {"text": "ok"},
-                    "id": "c1",
-                    "type": "tool_call",
-                }],
+                tool_calls=[
+                    {
+                        "name": "fast_echo",
+                        "args": {"text": "ok"},
+                        "id": "c1",
+                        "type": "tool_call",
+                    }
+                ],
             ),
         ],
         "session_id": 1,
@@ -136,33 +144,40 @@ def test_identical_call_halts_on_third_attempt():
     prior = [
         AIMessage(
             content="",
-            tool_calls=[{
-                "name": "fast_echo",
-                "args": {"text": "loop"},
-                "id": "a",
-                "type": "tool_call",
-            }],
+            tool_calls=[
+                {
+                    "name": "fast_echo",
+                    "args": {"text": "loop"},
+                    "id": "a",
+                    "type": "tool_call",
+                }
+            ],
         ),
         AIMessage(
             content="",
-            tool_calls=[{
-                "name": "fast_echo",
-                "args": {"text": "loop"},
-                "id": "b",
-                "type": "tool_call",
-            }],
+            tool_calls=[
+                {
+                    "name": "fast_echo",
+                    "args": {"text": "loop"},
+                    "id": "b",
+                    "type": "tool_call",
+                }
+            ],
         ),
     ]
     state = {
-        "messages": prior + [
+        "messages": prior
+        + [
             AIMessage(
                 content="",
-                tool_calls=[{
-                    "name": "fast_echo",
-                    "args": {"text": "loop"},
-                    "id": "c",
-                    "type": "tool_call",
-                }],
+                tool_calls=[
+                    {
+                        "name": "fast_echo",
+                        "args": {"text": "loop"},
+                        "id": "c",
+                        "type": "tool_call",
+                    }
+                ],
             ),
         ],
         "session_id": 1,

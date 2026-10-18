@@ -1,29 +1,38 @@
 #!/usr/bin/env python3
 """Configure Google login without exposing secrets in shell history or output."""
+
 from __future__ import annotations
 
 import argparse
-from getpass import getpass
 import os
-from pathlib import Path
 import re
 import secrets
 import tempfile
+from getpass import getpass
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from dotenv import dotenv_values, set_key, unset_key
 import tomlkit
+from dotenv import dotenv_values, set_key, unset_key
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ORIGIN = "https://portfolio.panyang666.com"
 
 
 def callback_url(origin: str) -> str:
     origin = origin.rstrip("/")
     url = urlsplit(origin)
-    if (not url.hostname or url.username or url.password or url.path or url.query or url.fragment
-            or not (url.scheme == "https" or
-                    (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"}))):
+    if (
+        not url.hostname
+        or url.username
+        or url.password
+        or url.path
+        or url.query
+        or url.fragment
+        or not (
+            url.scheme == "https"
+            or (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"})
+        )
+    ):
         raise ValueError("Use an HTTPS origin, or HTTP localhost for development")
     return origin + "/oauth2callback"
 
@@ -45,8 +54,11 @@ def configure(root: Path, origin: str, email: str, client_id: str, client_secret
     old_auth = document.get("auth", {})
     # Preserve sessions on ordinary reruns; changing clients invalidates cookies.
     cookie = old_auth.get("cookie_secret", "")
-    if (not isinstance(cookie, str) or len(cookie) < 32
-            or old_auth.get("google", {}).get("client_id") != client_id):
+    if (
+        not isinstance(cookie, str)
+        or len(cookie) < 32
+        or old_auth.get("google", {}).get("client_id") != client_id
+    ):
         cookie = secrets.token_urlsafe(48)
     document["auth"] = {
         "redirect_uri": redirect,
@@ -88,8 +100,10 @@ def configure(root: Path, origin: str, email: str, client_id: str, client_secret
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=DEFAULT_ORIGIN)
-    parser.add_argument("--email", help="The one Gmail / Google Workspace account allowed to access the UI")
+    parser.add_argument("--base-url", required=True, help="Public HTTPS origin of your deployment")
+    parser.add_argument(
+        "--email", help="The one Gmail / Google Workspace account allowed to access the UI"
+    )
     parser.add_argument("--project-dir", type=Path, default=ROOT)
     args = parser.parse_args()
     email = args.email or input("Allowed Google email: ")
@@ -99,7 +113,9 @@ def main() -> None:
         configure(args.project_dir, args.base_url, email, client_id, client_secret)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
-    print("Google login configured. Existing A2A/model settings preserved; old UI password removed.")
+    print(
+        "Google login configured. Existing A2A/model settings preserved; old UI password removed."
+    )
     print("Redirect URI:", callback_url(args.base_url))
     print("Restart portfolio-agent, then test login using your allowed account.")
 

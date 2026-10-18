@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
-load_dotenv()
+if os.environ.get("PYTHON_DOTENV_DISABLED", "").lower() not in ("1", "true", "yes"):
+    load_dotenv()
 
 PROJECT_ROOT = Path(__file__).parent
 
@@ -10,23 +12,39 @@ PROJECT_ROOT = Path(__file__).parent
 class Config:
     # Portfolio memory: local lexical search works without external credentials.
     MEMORY_ENABLED = os.environ.get("MEMORY_ENABLED", "true").lower() in ("1", "true", "yes")
-    MEMORY_VECTOR_ENABLED = os.environ.get("MEMORY_VECTOR_ENABLED", "false").lower() in ("1", "true", "yes")
+    MEMORY_VECTOR_ENABLED = os.environ.get("MEMORY_VECTOR_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     MEMORY_EMBEDDING_BASE_URL = os.environ.get("MEMORY_EMBEDDING_BASE_URL", "").rstrip("/")
-    MEMORY_EMBEDDING_API_KEY = os.environ.get("MEMORY_EMBEDDING_API_KEY", "") or os.environ.get("DASHSCOPE_API_KEY", "")
-    MEMORY_EMBEDDING_MODEL = os.environ.get("MEMORY_EMBEDDING_MODEL", "qwen3.7-text-embedding-flash")
+    MEMORY_EMBEDDING_API_KEY = os.environ.get("MEMORY_EMBEDDING_API_KEY", "") or os.environ.get(
+        "DASHSCOPE_API_KEY", ""
+    )
+    MEMORY_EMBEDDING_MODEL = os.environ.get(
+        "MEMORY_EMBEDDING_MODEL", "qwen3.7-text-embedding-flash"
+    )
     MEMORY_EMBEDDING_DIMENSIONS = int(os.environ.get("MEMORY_EMBEDDING_DIMENSIONS", "1024"))
     MEMORY_QDRANT_URL = os.environ.get("MEMORY_QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
     MEMORY_QDRANT_API_KEY = os.environ.get("MEMORY_QDRANT_API_KEY", "")
     MEMORY_COLLECTION = os.environ.get("MEMORY_COLLECTION", "portfolio_memory")
     MEMORY_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_BATCH_SIZE", "20"))))
     MEMORY_INTERVAL_SECONDS = max(5, int(os.environ.get("MEMORY_INTERVAL_SECONDS", "10")))
-    MEMORY_IMPORT_BATCH_SIZE = max(1, min(200, int(os.environ.get("MEMORY_IMPORT_BATCH_SIZE", "50"))))
-    MEMORY_LEXICAL_BATCH_SIZE = max(1, min(200, int(os.environ.get("MEMORY_LEXICAL_BATCH_SIZE", "50"))))
-    MEMORY_VECTOR_DOCUMENT_BATCH_SIZE = max(1, min(20, int(os.environ.get("MEMORY_VECTOR_DOCUMENT_BATCH_SIZE", "4"))))
-    MEMORY_EMBEDDING_SEND_DIMENSIONS = os.environ.get("MEMORY_EMBEDDING_SEND_DIMENSIONS", "true").lower() in ("1", "true", "yes")
+    MEMORY_IMPORT_BATCH_SIZE = max(
+        1, min(200, int(os.environ.get("MEMORY_IMPORT_BATCH_SIZE", "50")))
+    )
+    MEMORY_LEXICAL_BATCH_SIZE = max(
+        1, min(200, int(os.environ.get("MEMORY_LEXICAL_BATCH_SIZE", "50")))
+    )
+    MEMORY_VECTOR_DOCUMENT_BATCH_SIZE = max(
+        1, min(20, int(os.environ.get("MEMORY_VECTOR_DOCUMENT_BATCH_SIZE", "4")))
+    )
+    MEMORY_EMBEDDING_SEND_DIMENSIONS = os.environ.get(
+        "MEMORY_EMBEDDING_SEND_DIMENSIONS", "true"
+    ).lower() in ("1", "true", "yes")
 
     # Database
-    DATABASE_URL: str = f"sqlite:///{PROJECT_ROOT / 'portfolio.db'}"
+    DATABASE_URL: str = os.environ.get("DATABASE_URL", f"sqlite:///{PROJECT_ROOT / 'portfolio.db'}")
 
     # DeepSeek (OpenAI-compatible API) — deepseek-v4-pro + thinking mode by default
     # Docs: https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
@@ -38,7 +56,10 @@ class Config:
     # Thinking intensity: high | max (agent workloads use max).
     DEEPSEEK_REASONING_EFFORT: str = os.environ.get("DEEPSEEK_REASONING_EFFORT", "max")
     DEEPSEEK_THINKING: bool = os.environ.get("DEEPSEEK_THINKING", "true").lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
     # Per-request HTTP timeout for chat/completions (seconds). Prevents indefinite hangs.
     DEEPSEEK_TIMEOUT: float = float(os.environ.get("DEEPSEEK_TIMEOUT", "300"))
@@ -85,19 +106,30 @@ class Config:
     # Google login is fail-closed by default; disable only for local development.
     # OAuth client/cookie secrets live in .streamlit/secrets.toml.
     AUTH_ENABLED: bool = os.environ.get("AUTH_ENABLED", "true").strip().lower() not in (
-        "0", "false", "no", "off",
+        "0",
+        "false",
+        "no",
+        "off",
     )
     AUTH_ALLOWED_EMAILS: str = os.environ.get("AUTH_ALLOWED_EMAILS", "")
 
     # A2A server (optional). Off unless A2A_ENABLED=true and A2A_TOKEN is set.
     A2A_ENABLED: bool = os.environ.get("A2A_ENABLED", "false").lower() in (
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     )
     A2A_PORT: int = int(os.environ.get("A2A_PORT", "8502"))
     A2A_TOKEN: str = os.environ.get("A2A_TOKEN", "")
     A2A_PUBLIC_URL: str = os.environ.get("A2A_PUBLIC_URL", "")
     A2A_HOST: str = os.environ.get("A2A_HOST", "127.0.0.1")
-    ACTIONS_ENABLED: bool = os.environ.get("ACTIONS_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+    ACTIONS_ENABLED: bool = os.environ.get("ACTIONS_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     ACTIONS_TOKEN: str = os.environ.get("ACTIONS_TOKEN", "")
     ACTIONS_PUBLIC_URL: str = os.environ.get("ACTIONS_PUBLIC_URL", "")
 
@@ -131,9 +163,7 @@ def _configure_langsmith_env(cfg: Config) -> None:
     os.environ["LANGSMITH_PROJECT"] = cfg.LANGSMITH_PROJECT
     os.environ["LANGCHAIN_PROJECT"] = cfg.LANGSMITH_PROJECT
 
-    explicit = os.environ.get("LANGSMITH_TRACING") or os.environ.get(
-        "LANGCHAIN_TRACING_V2"
-    )
+    explicit = os.environ.get("LANGSMITH_TRACING") or os.environ.get("LANGCHAIN_TRACING_V2")
     if explicit is not None and explicit.lower() in ("0", "false", "no", "off"):
         os.environ["LANGSMITH_TRACING"] = "false"
         os.environ["LANGCHAIN_TRACING_V2"] = "false"

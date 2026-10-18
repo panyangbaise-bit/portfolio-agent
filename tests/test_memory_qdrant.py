@@ -3,6 +3,7 @@
 Run: MEMORY_TEST_QDRANT_URL=http://127.0.0.1:16333 pytest tests/test_memory_qdrant.py
 Embeddings are served locally from a deterministic fixture, not an external API.
 """
+
 import json
 import os
 import threading
@@ -17,36 +18,52 @@ from sqlalchemy.pool import StaticPool
 from config import config
 from db.models import Base, TradingDiscipline
 from memory import backends, retrieval
-from memory.indexer import initialize, index_lexical_batch, index_vector_batch
+from memory.indexer import index_lexical_batch, index_vector_batch, initialize
 
 
-@pytest.mark.skipif(not os.environ.get("MEMORY_TEST_QDRANT_URL"), reason="Real Qdrant integration is opt-in")
+@pytest.mark.skipif(
+    not os.environ.get("MEMORY_TEST_QDRANT_URL"), reason="Real Qdrant integration is opt-in"
+)
 def test_real_qdrant_and_embedding_http_roundtrip(monkeypatch):
     calls = []
+
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             assert self.path == "/v1/embeddings"
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             calls.append(payload)
-            content = json.dumps({"data": [{"index": i, "embedding": [1., .1, .2, .3]}
-                                            for i, _ in enumerate(payload["input"])]}).encode()
+            content = json.dumps(
+                {
+                    "data": [
+                        {"index": i, "embedding": [1.0, 0.1, 0.2, 0.3]}
+                        for i, _ in enumerate(payload["input"])
+                    ]
+                }
+            ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(content)))
             self.end_headers()
             self.wfile.write(content)
-        def log_message(self, *args): pass
+
+        def log_message(self, *args):
+            pass
+
     http = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=http.serve_forever, daemon=True)
     worker.start()
     monkeypatch.setattr(config, "MEMORY_VECTOR_ENABLED", True)
-    monkeypatch.setattr(config, "MEMORY_EMBEDDING_BASE_URL", f"http://127.0.0.1:{http.server_port}/v1")
+    monkeypatch.setattr(
+        config, "MEMORY_EMBEDDING_BASE_URL", f"http://127.0.0.1:{http.server_port}/v1"
+    )
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_API_KEY", "test-only")
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_MODEL", "fixture")
     monkeypatch.setattr(config, "MEMORY_EMBEDDING_DIMENSIONS", 4)
     monkeypatch.setattr(config, "MEMORY_QDRANT_URL", os.environ["MEMORY_TEST_QDRANT_URL"])
     monkeypatch.setattr(config, "MEMORY_COLLECTION", "portfolio_test_" + uuid.uuid4().hex)
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     client = backends.Qdrant()
     try:
         Base.metadata.create_all(engine)
@@ -61,7 +78,10 @@ def test_real_qdrant_and_embedding_http_roundtrip(monkeypatch):
             result = retrieval.search(db, "protect savings", source_types=["discipline"])
             assert result["mode"] == "hybrid", result
             assert result["results"] and result["results"][0]["source_type"] == "discipline"
-            assert retrieval.search(db, "protect savings", source_types=["transaction"])["results"] == []
+            assert (
+                retrieval.search(db, "protect savings", source_types=["transaction"])["results"]
+                == []
+            )
             assert retrieval.search(db, "protect savings", as_of="2000-01-01Z")["results"] == []
         assert calls and all(c["model"] == "fixture" for c in calls)
     finally:

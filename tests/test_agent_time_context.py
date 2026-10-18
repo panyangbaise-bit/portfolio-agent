@@ -1,10 +1,10 @@
 """Agent wall-clock context for system prompts."""
 
-from app.timeutil import format_now_for_agent
+from common.time import format_now_for_agent
 
 
 def test_format_now_for_agent_includes_heading_and_timezone(monkeypatch):
-    monkeypatch.setattr("app.timeutil.config.APP_TIMEZONE", "Asia/Shanghai")
+    monkeypatch.setattr("common.time.config.APP_TIMEZONE", "Asia/Shanghai")
 
     block = format_now_for_agent()
 

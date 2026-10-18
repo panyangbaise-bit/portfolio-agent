@@ -3,9 +3,9 @@
 from typing import Optional
 
 from db.repository import (
-    get_session,
     create_agent_session,
     end_agent_session,
+    get_session,
     log_tool_call,
     reopen_agent_session,
 )
@@ -68,6 +68,7 @@ class AgentSessionManager:
 
     def record_message(self, role: str, content: str):
         from db.models import ConversationMessage
+
         if self.session_id:
             with get_session() as db:
                 db.add(ConversationMessage(session_id=self.session_id, role=role, content=content))

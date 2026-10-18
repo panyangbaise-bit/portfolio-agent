@@ -50,18 +50,28 @@ def agent_card(public_url: str, v1: bool = False) -> dict:
                 "examples": ["我的组合现在怎么样？"],
             },
             {
-                "id": "portfolio-ledger", "name": "Portfolio and transaction ledger",
+                "id": "portfolio-ledger",
+                "name": "Portfolio and transaction ledger",
                 "description": 'Fast read-only query via a data part: {"operation":"holdings"|"transactions","filters":{ticker,market,status,start_date,end_date,action,limit,offset}}. Dates apply to transactions (inclusive UTC). status applies to holdings: open/closed/all. Default limit 25, max 100; follow next_offset. Costs are not live quotes.',
                 "tags": ["holdings", "transactions", "read-only"],
-                "examples": ["我的持仓有哪些？", "最近一个月买卖了什么？", "查看 AAPL 的成交记录，包含已清仓仓位"],
-            }
+                "examples": [
+                    "我的持仓有哪些？",
+                    "最近一个月买卖了什么？",
+                    "查看 AAPL 的成交记录，包含已清仓仓位",
+                ],
+            },
         ],
     }
     if v1:
         for key in ("protocolVersion", "url", "preferredTransport", "security"):
             card.pop(key, None)
-        card["supportedInterfaces"] = [{"url": public_url.rstrip("/") + "/a2a/v1",
-                                       "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}]
+        card["supportedInterfaces"] = [
+            {
+                "url": public_url.rstrip("/") + "/a2a/v1",
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0",
+            }
+        ]
         card["securitySchemes"] = {"bearer": {"httpAuthSecurityScheme": {"scheme": "bearer"}}}
         card["securityRequirements"] = [{"schemes": {"bearer": {"list": []}}}]
     return card
@@ -70,8 +80,16 @@ def agent_card(public_url: str, v1: bool = False) -> dict:
 class A2AApp:
     """In-memory task store and JSON-RPC handler, independent of the socket."""
 
-    def __init__(self, token: str, public_url: str, runner: Optional[Runner] = None,
-                 *, actions_token: str = "", actions_url: str = "", reader=None):
+    def __init__(
+        self,
+        token: str,
+        public_url: str,
+        runner: Optional[Runner] = None,
+        *,
+        actions_token: str = "",
+        actions_url: str = "",
+        reader=None,
+    ):
         self.token = token
         self.public_url = public_url
         self.runner = runner or _default_runner
@@ -79,6 +97,7 @@ class A2AApp:
         self.actions_url = actions_url or public_url
         if reader is None:
             from a2a.queries import read_query
+
             reader = read_query
         self.reader = reader
         self.tasks: Dict[str, dict] = {}
@@ -89,10 +108,14 @@ class A2AApp:
         parsed = urlparse(path or "/")
         route = parsed.path or "/"
         v1 = route.startswith("/a2a/v1") or _header(headers, "A2A-Version") == "1.0"
-        if method == "GET" and route in ("/.well-known/agent-card.json", "/a2a/v1/.well-known/agent-card.json"):
+        if method == "GET" and route in (
+            "/.well-known/agent-card.json",
+            "/a2a/v1/.well-known/agent-card.json",
+        ):
             return 200, agent_card(self.public_url, v1=v1)
         if self.actions_token and (route.startswith("/api/v1/") or route == "/openapi.json"):
             from a2a.actions import handle_actions
+
             return handle_actions(self, method, route, parsed.query, headers, body)
         if method != "POST" or route not in ("/", "/a2a/v1", "/a2a/v1/"):
             return 404, {"error": "not found"}
@@ -101,7 +124,11 @@ class A2AApp:
         try:
             payload = json.loads(body.decode("utf-8") or "{}")
         except (UnicodeDecodeError, json.JSONDecodeError):
-            return 400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
+            return 400, {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error"},
+            }
         if not isinstance(payload, dict):
             return 400, _rpc_error(None, -32600, "Invalid request")
         rpc_id = payload.get("id")
@@ -141,10 +168,12 @@ class A2AApp:
         if len(data) > 1 or (data and not isinstance(data[0], dict)):
             return _rpc_error(rpc_id, -32602, "Use one data part with operation and filters")
         query = data[0] if data else None
-        if query is not None and (set(query) - {"operation", "filters"} or
-                                  not isinstance(query.get("operation"), str) or
-                                  query.get("operation") not in {"holdings", "transactions"} or
-                                  not isinstance(query.get("filters", {}), dict)):
+        if query is not None and (
+            set(query) - {"operation", "filters"}
+            or not isinstance(query.get("operation"), str)
+            or query.get("operation") not in {"holdings", "transactions"}
+            or not isinstance(query.get("filters", {}), dict)
+        ):
             return _rpc_error(rpc_id, -32602, "Invalid ledger operation or filters")
         if not text and query is None:
             return _rpc_error(rpc_id, -32602, "Message has no text")
@@ -153,11 +182,7 @@ class A2AApp:
         raw_context = message.get("contextId", params.get("contextId"))
         if raw_context is not None and not isinstance(raw_context, str):
             return _rpc_error(rpc_id, -32602, "Invalid contextId")
-        context_id = (
-            message.get("contextId")
-            or params.get("contextId")
-            or uuid.uuid4().hex
-        )
+        context_id = message.get("contextId") or params.get("contextId") or uuid.uuid4().hex
         if not isinstance(context_id, str) or not re.fullmatch(r"[\w.-]{1,128}", context_id):
             return _rpc_error(rpc_id, -32602, "Invalid contextId")
         request_id = message.get("messageId")
@@ -168,18 +193,27 @@ class A2AApp:
         with self._lock:
             self._prune()
             for existing in self.tasks.values():
-                if request_id and existing.get("request_id") == request_id and existing["channel"] == channel:
-                    if (existing["question"] != text or existing.get("query") != query or
-                            (raw_context and existing["contextId"] != raw_context)):
-                        return _rpc_error(rpc_id, -32602, "messageId already used for another request")
+                if (
+                    request_id
+                    and existing.get("request_id") == request_id
+                    and existing["channel"] == channel
+                ):
+                    if (
+                        existing["question"] != text
+                        or existing.get("query") != query
+                        or (raw_context and existing["contextId"] != raw_context)
+                    ):
+                        return _rpc_error(
+                            rpc_id, -32602, "messageId already used for another request"
+                        )
                     return {"jsonrpc": "2.0", "id": rpc_id, "result": _task_payload(existing)}
             if sum(t["state"] == "working" for t in self.tasks.values()) >= 4:
                 return _rpc_error(rpc_id, -32000, "Agent busy; retry later")
-            context = self.contexts.setdefault(
-                context_key, {"session_id": None, "history": []}
-            )
+            context = self.contexts.setdefault(context_key, {"session_id": None, "history": []})
             if context.get("active"):
-                return _rpc_error(rpc_id, -32000, "Context has a running query; poll it before following up")
+                return _rpc_error(
+                    rpc_id, -32000, "Context has a running query; poll it before following up"
+                )
             context["active"] = task_id
             history = list(context.get("history") or [])
             session_id = context.get("session_id")
@@ -189,10 +223,15 @@ class A2AApp:
                 "state": "working",
                 "text": "",
                 "error": "",
-                "channel": channel, "context_key": context_key,
-                "request_id": request_id, "question": text, "query": query,
-                "created": time.monotonic(), "done": threading.Event(),
-                "message_id": uuid.uuid4().hex, "artifact_id": uuid.uuid4().hex,
+                "channel": channel,
+                "context_key": context_key,
+                "request_id": request_id,
+                "question": text,
+                "query": query,
+                "created": time.monotonic(),
+                "done": threading.Event(),
+                "message_id": uuid.uuid4().hex,
+                "artifact_id": uuid.uuid4().hex,
             }
             accepted = _task_payload(self.tasks[task_id])
         thread = threading.Thread(
@@ -226,9 +265,7 @@ class A2AApp:
             else:
                 answer, new_session_id = self.runner(question, history, session_id)
             with self._lock:
-                context = self.contexts.setdefault(
-                    context_id, {"session_id": None, "history": []}
-                )
+                context = self.contexts.setdefault(context_id, {"session_id": None, "history": []})
                 context["session_id"] = new_session_id or context.get("session_id")
                 turns = list(history) + [
                     {"role": "user", "content": question},
@@ -246,7 +283,11 @@ class A2AApp:
                 task = self.tasks.get(task_id)
                 if task is not None:
                     task["state"] = "failed"
-                    task["error"] = str(exc) if isinstance(exc, ValueError) else "Query failed; inspect server logs and retry."
+                    task["error"] = (
+                        str(exc)
+                        if isinstance(exc, ValueError)
+                        else "Query failed; inspect server logs and retry."
+                    )
         finally:
             with self._lock:
                 self.contexts[context_id].pop("active", None)
@@ -319,18 +360,37 @@ def start_a2a_server() -> Optional[ThreadingHTTPServer]:
     if _server is not None:
         return _server
     public_url = config.A2A_PUBLIC_URL.strip() or f"http://127.0.0.1:{config.A2A_PORT}/"
-    app = A2AApp(token=config.A2A_TOKEN if config.A2A_ENABLED else "", public_url=public_url,
-                 actions_token=config.ACTIONS_TOKEN if config.ACTIONS_ENABLED else "",
-                 actions_url=config.ACTIONS_PUBLIC_URL)
-    _server = make_server(app, config.A2A_HOST, config.A2A_PORT)
+    app = A2AApp(
+        token=config.A2A_TOKEN if config.A2A_ENABLED else "",
+        public_url=public_url,
+        actions_token=config.ACTIONS_TOKEN if config.ACTIONS_ENABLED else "",
+        actions_url=config.ACTIONS_PUBLIC_URL,
+    )
+    server = make_server(app, config.A2A_HOST, config.A2A_PORT)
     thread = threading.Thread(
-        target=_server.serve_forever,
+        target=server.serve_forever,
         daemon=True,
         name="a2a",
     )
-    thread.start()
+    try:
+        thread.start()
+    except Exception:
+        # shutdown() would block forever if serve_forever() never started.
+        server.server_close()
+        raise
+    _server = server
     logger.info("External API listening on %s:%s", config.A2A_HOST, config.A2A_PORT)
     return _server
+
+
+def stop_a2a_server() -> None:
+    """Stop the listener and release its port; safe to call repeatedly."""
+    global _server
+    if _server is None:
+        return
+    server, _server = _server, None
+    server.shutdown()
+    server.server_close()
 
 
 def _default_runner(question: str, history: list, session_id: Optional[int]):
@@ -372,11 +432,16 @@ def _task_payload(task: dict, v1=False) -> dict:
     }
     if state == "completed":
         payload["status"]["message"] = message
-        payload["artifacts"] = [{
-            "artifactId": task["artifact_id"],
-            "parts": ([{"kind": "data", "data": task["data"]}] if "data" in task else
-                      [{"kind": "text", "text": task.get("text") or ""}]),
-        }]
+        payload["artifacts"] = [
+            {
+                "artifactId": task["artifact_id"],
+                "parts": (
+                    [{"kind": "data", "data": task["data"]}]
+                    if "data" in task
+                    else [{"kind": "text", "text": task.get("text") or ""}]
+                ),
+            }
+        ]
     elif state == "failed":
         payload["status"]["message"] = message
     if v1:

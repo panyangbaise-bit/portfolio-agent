@@ -8,7 +8,9 @@ from db.repository import create_recommendation
 
 
 def test_dismiss_form_blocks_blank_input_and_saves_reason(monkeypatch):
-    engine = create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as db:
         agent_session = AgentSession(triggered_by="test", status="completed")

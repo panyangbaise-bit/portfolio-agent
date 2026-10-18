@@ -84,10 +84,12 @@ def test_closed_shows_fab_only(monkeypatch):
 
 def test_open_shows_panel_controls(monkeypatch):
     st = FakeSt()
-    st.session_state.update({
-        "ask_agent_open": True,
-        "ask_agent_messages": [{"role": "user", "content": "hi"}],
-    })
+    st.session_state.update(
+        {
+            "ask_agent_open": True,
+            "ask_agent_messages": [{"role": "user", "content": "hi"}],
+        }
+    )
     monkeypatch.setattr(ask_agent_chat, "st", st)
     monkeypatch.setattr(ask_agent_chat, "t", lambda k, **kw: k)
     ask_agent_chat.render_ask_agent_chat()
@@ -107,12 +109,14 @@ def test_dashboard_has_no_inline_ask_agent():
 
 def test_clear_thread_resets_db_session_id(monkeypatch):
     st = FakeSt()
-    st.session_state.update({
-        "ask_agent_messages": [{"role": "user", "content": "hi"}],
-        "ask_agent_db_session_id": 99,
-        "ask_agent_pending": "x",
-        "ask_agent_busy": True,
-    })
+    st.session_state.update(
+        {
+            "ask_agent_messages": [{"role": "user", "content": "hi"}],
+            "ask_agent_db_session_id": 99,
+            "ask_agent_pending": "x",
+            "ask_agent_busy": True,
+        }
+    )
     monkeypatch.setattr(ask_agent_chat, "st", st)
     ask_agent_chat._clear_thread()
     assert st.session_state["ask_agent_messages"] == []

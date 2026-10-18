@@ -15,17 +15,26 @@ try:
 except ImportError:  # pragma: no cover
     from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
-from db.repository import (
-    get_session, get_open_holdings, get_all_holdings, get_holding_by_ticker,
-    create_recommendation, get_recommendation_history as db_get_rec_history,
-    get_recent_transactions, list_transactions, find_similar_recommendation,
-    upsert_price,
-)
 from adapters.base import registry as adapter_registry
 from adapters.brave_search import brave_search
 from adapters.news import news_adapter
 from adapters.safe import error_payload
+from agent.chart_tools import annotate_kline
 from agent.kline import enrich_kline
+from db.repository import (
+    create_recommendation,
+    find_similar_recommendation,
+    get_all_holdings,
+    get_holding_by_ticker,
+    get_open_holdings,
+    get_recent_transactions,
+    get_session,
+    list_transactions,
+)
+from db.repository import (
+    get_recommendation_history as db_get_rec_history,
+)
+from memory.tools import get_instrument_timeline, read_memory, search_memory
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -34,7 +43,9 @@ R = TypeVar("R")
 _BATCH_MAX_WORKERS = 12
 
 
-def _map_parallel(items: List[T], fn: Callable[[T], R], max_workers: int = _BATCH_MAX_WORKERS) -> List[R]:
+def _map_parallel(
+    items: List[T], fn: Callable[[T], R], max_workers: int = _BATCH_MAX_WORKERS
+) -> List[R]:
     """Run ``fn`` over ``items`` concurrently; preserve input order in results."""
     if not items:
         return []
@@ -59,6 +70,7 @@ def _notify_recommendation(recommendation) -> None:
     """Deliver a saved pending recommendation without disrupting agent work."""
     try:
         from notifier.telegram import send_recommendation
+
         send_recommendation(recommendation)
     except Exception:
         # A notification outage must not turn a successfully saved
@@ -67,6 +79,7 @@ def _notify_recommendation(recommendation) -> None:
 
 
 # ── Portfolio Tools ───────────────────────────────────────
+
 
 @tool
 def get_portfolio() -> list[dict]:
@@ -80,7 +93,7 @@ def get_portfolio() -> list[dict]:
 
 
 def _get_portfolio_inner() -> list:
-    from app.fx import currency_for_market, get_cny_rates
+    from adapters.fx import currency_for_market, get_cny_rates
 
     session = get_session()
     try:
@@ -118,26 +131,29 @@ def _get_portfolio_inner() -> list:
             market_value_cny = market_value * rate
             total_value_cny += market_value_cny
             pnl_pct = ((current_price - h.cost_basis) / h.cost_basis * 100) if h.cost_basis else 0
-            values.append({
-                "ticker": h.ticker,
-                "market": h.market,
-                "shares": h.shares,
-                "cost_basis": h.cost_basis,
-                "currency": currency_for_market(market),
-                "current_price": round(current_price, 4) if market == "CN" else round(current_price, 2),
-                "position_type": h.position_type,
-                "pnl_pct": round(pnl_pct, 2),
-                "market_value": round(market_value, 2),
-                "market_value_cny": round(market_value_cny, 2),
-                "fx_rate_to_cny": rate,
-                "holding_id": h.id,
-            })
+            values.append(
+                {
+                    "ticker": h.ticker,
+                    "market": h.market,
+                    "shares": h.shares,
+                    "cost_basis": h.cost_basis,
+                    "currency": currency_for_market(market),
+                    "current_price": round(current_price, 4)
+                    if market == "CN"
+                    else round(current_price, 2),
+                    "position_type": h.position_type,
+                    "pnl_pct": round(pnl_pct, 2),
+                    "market_value": round(market_value, 2),
+                    "market_value_cny": round(market_value_cny, 2),
+                    "fx_rate_to_cny": rate,
+                    "holding_id": h.id,
+                }
+            )
 
         if missing_fx:
             return {
                 "error": (
-                    "无法获取汇率，无法计算人民币仓位权重: "
-                    + ", ".join(sorted(set(missing_fx)))
+                    "无法获取汇率，无法计算人民币仓位权重: " + ", ".join(sorted(set(missing_fx)))
                 ),
                 "holdings": values,
             }
@@ -169,8 +185,8 @@ def get_return_summary() -> dict:
 
 
 def _get_return_summary_inner() -> dict:
-    from app.fx import get_cny_rates
-    from app.components.portfolio_valuation import calculate_portfolio_totals
+    from adapters.fx import get_cny_rates
+    from domain.valuation import calculate_portfolio_totals
 
     session = get_session()
     try:
@@ -222,6 +238,7 @@ def get_holding(ticker: str) -> dict:
     Returns:
         dict: 持仓详情，含 ticker, market, shares, cost_basis, position_type, current_price, pnl_pct
     """
+
     def _run():
         session = get_session()
         try:
@@ -230,6 +247,7 @@ def get_holding(ticker: str) -> dict:
             session.close()
 
     return _safe_invoke(_run, ticker=ticker)
+
 
 def _get_holding_inner(session, ticker: str) -> dict:
     h = get_holding_by_ticker(session, ticker.upper())
@@ -258,6 +276,7 @@ def _get_holding_inner(session, ticker: str) -> dict:
 
 
 # ── Market Data Tools ─────────────────────────────────────
+
 
 def _resolve_adapters_for_batch(tickers: list[str], market: str):
     """Resolve adapter per ticker when market may be comma-separated."""
@@ -345,7 +364,9 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dic
         if ad is None:
             return {"error": f"no adapter for market: {market}"}
         item_market = next(m.strip() for m in market.split(",") if m.strip())
-        return _safe_invoke(lambda: enrich_kline(ad.get_kline(tickers[0], period), item_market), empty=[])
+        return _safe_invoke(
+            lambda: enrich_kline(ad.get_kline(tickers[0], period), item_market), empty=[]
+        )
 
     def _one(t: str):
         ad = adapters.get(t)
@@ -455,6 +476,7 @@ def get_market_snapshot(market: str) -> dict:
 
 # ── Watchlist Tools ───────────────────────────────────────
 
+
 @tool
 def get_watchlist(status: Optional[str] = None) -> list[dict]:
     """获取监察表（Watchlist）中的所有标的。监察表是用户感兴趣的待建仓标的列表，
@@ -518,21 +540,32 @@ def add_to_watchlist(
     Returns:
         dict: status=added, ticker, id
     """
-    from db.repository import create_watchlist_item, get_watchlist_by_ticker
 
     def _run():
         return _add_to_watchlist_inner(
-            ticker, market, name, watch_reason,
-            target_price_low, target_price_high, priority,
+            ticker,
+            market,
+            name,
+            watch_reason,
+            target_price_low,
+            target_price_high,
+            priority,
         )
 
     return _safe_invoke(_run, ticker=ticker)
 
 
 def _add_to_watchlist_inner(
-    ticker, market, name, watch_reason, target_price_low, target_price_high, priority,
+    ticker,
+    market,
+    name,
+    watch_reason,
+    target_price_low,
+    target_price_high,
+    priority,
 ):
     from db.repository import create_watchlist_item, get_watchlist_by_ticker
+
     session = get_session()
     session.info["memory_actor"] = "agent"
     try:
@@ -569,7 +602,7 @@ def remove_from_watchlist(ticker: str) -> dict:
     Returns:
         dict: status=removed | not_found
     """
-    from db.repository import get_watchlist_by_ticker, delete_watchlist_item
+    from db.repository import delete_watchlist_item, get_watchlist_by_ticker
 
     def _run():
         session = get_session()
@@ -587,6 +620,7 @@ def remove_from_watchlist(ticker: str) -> dict:
 
 
 # ── News Tools (continued) ────────────────────────────────
+
 
 @tool
 def search_ticker_news(ticker: str, days: int = 7) -> dict:
@@ -683,6 +717,7 @@ def web_search(query: str, count: int = 5, days: int = 7) -> dict:
 
 # ── Recommendation Tools ──────────────────────────────────
 
+
 @tool
 def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) -> list[dict]:
     """查看近期已保存的投资建议（含 pending / acted / dismissed）。
@@ -697,6 +732,7 @@ def get_recommendation_history(ticker: Optional[str] = None, limit: int = 20) ->
     Returns:
         list[dict]: 历史建议列表
     """
+
     def _run():
         return _get_recommendation_history_inner(ticker, limit)
 
@@ -717,8 +753,13 @@ def _get_recommendation_history_inner(ticker, limit):
                 "urgency": r.urgency,
                 "status": r.status,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
-                "user_feedback": {"action": r.user_action.action, "reason": r.user_action.notes,
-                                  "acted_at": r.user_action.acted_at.isoformat()} if r.user_action else None,
+                "user_feedback": {
+                    "action": r.user_action.action,
+                    "reason": r.user_action.notes,
+                    "acted_at": r.user_action.acted_at.isoformat(),
+                }
+                if r.user_action
+                else None,
             }
             for r in recs
         ]
@@ -736,6 +777,7 @@ def get_trade_history(days: int = 30) -> list[dict]:
     Returns:
         list[dict]: 交易列表，含 ticker, action, shares, price, date, notes
     """
+
     def _run():
         return _get_trade_history_inner(days)
 
@@ -749,15 +791,17 @@ def _get_trade_history_inner(days):
         rows = []
         for txn in txns:
             holding = txn.holding
-            rows.append({
-                "ticker": holding.ticker if holding else None,
-                "name": holding.name if holding else None,
-                "action": txn.action,
-                "shares": txn.shares,
-                "price": txn.price,
-                "date": txn.date.isoformat() if txn.date else None,
-                "notes": txn.notes,
-            })
+            rows.append(
+                {
+                    "ticker": holding.ticker if holding else None,
+                    "name": holding.name if holding else None,
+                    "action": txn.action,
+                    "shares": txn.shares,
+                    "price": txn.price,
+                    "date": txn.date.isoformat() if txn.date else None,
+                    "notes": txn.notes,
+                }
+            )
         return rows
     finally:
         session.close()
@@ -816,27 +860,50 @@ def save_recommendation(
                 r_urgency = (rec_item.get("urgency") or "low").strip().lower()
 
                 if r_action == "hold" and r_urgency == "low":
-                    results.append({"ticker": r_ticker, "status": "skipped_routine",
-                                    "message": "日常 hold 不写入"})
+                    results.append(
+                        {
+                            "ticker": r_ticker,
+                            "status": "skipped_routine",
+                            "message": "日常 hold 不写入",
+                        }
+                    )
                     continue
 
                 similar = find_similar_recommendation(
-                    db_session, ticker=r_ticker, action=r_action, urgency=r_urgency,
+                    db_session,
+                    ticker=r_ticker,
+                    action=r_action,
+                    urgency=r_urgency,
                 )
                 if similar is not None:
-                    results.append({"ticker": r_ticker, "status": "skipped_unchanged",
-                                    "existing_id": similar.id})
+                    results.append(
+                        {
+                            "ticker": r_ticker,
+                            "status": "skipped_unchanged",
+                            "existing_id": similar.id,
+                        }
+                    )
                     continue
 
                 rec = create_recommendation(
-                    db_session, session_id=session_id,
-                    ticker=r_ticker, action=r_action, reasoning=r_reasoning,
-                    confidence=r_confidence, urgency=r_urgency,
+                    db_session,
+                    session_id=session_id,
+                    ticker=r_ticker,
+                    action=r_action,
+                    reasoning=r_reasoning,
+                    confidence=r_confidence,
+                    urgency=r_urgency,
                 )
                 _notify_recommendation(rec)
                 saved_count += 1
-                results.append({"ticker": rec.ticker, "status": "saved",
-                                "recommendation_id": rec.id, "action": rec.action})
+                results.append(
+                    {
+                        "ticker": rec.ticker,
+                        "status": "saved",
+                        "recommendation_id": rec.id,
+                        "action": rec.action,
+                    }
+                )
             return {"batch": True, "results": results, "total": len(results), "saved": saved_count}
         finally:
             db_session.close()
@@ -864,7 +931,10 @@ def save_recommendation(
     db_session = get_session()
     try:
         similar = find_similar_recommendation(
-            db_session, ticker=ticker, action=action_n, urgency=urgency_n,
+            db_session,
+            ticker=ticker,
+            action=action_n,
+            urgency=urgency_n,
         )
         if similar is not None:
             return {
@@ -875,15 +945,18 @@ def save_recommendation(
                 "existing_id": similar.id,
                 "existing_status": similar.status,
                 "message": (
-                    "同标的近期已有相同建议，未重复写入。"
-                    "请在回复中更新分析文字，勿再 save。"
+                    "同标的近期已有相同建议，未重复写入。请在回复中更新分析文字，勿再 save。"
                 ),
             }
 
         rec = create_recommendation(
-            db_session, session_id=session_id,
-            ticker=ticker, action=action_n, reasoning=reasoning,
-            confidence=confidence, urgency=urgency_n,
+            db_session,
+            session_id=session_id,
+            ticker=ticker,
+            action=action_n,
+            reasoning=reasoning,
+            confidence=confidence,
+            urgency=urgency_n,
         )
         _notify_recommendation(rec)
         return {
@@ -899,12 +972,18 @@ def save_recommendation(
 
 # ── Tool Collection ───────────────────────────────────────
 
+
 @tool
 def query_portfolio_ledger(
-    operation: str, ticker: Optional[str] = None, market: Optional[str] = None,
-    start_date: Optional[str] = None, end_date: Optional[str] = None,
-    action: Optional[str] = None, status: Optional[str] = None,
-    limit: int = 25, offset: int = 0,
+    operation: str,
+    ticker: Optional[str] = None,
+    market: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    action: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 25,
+    offset: int = 0,
 ) -> dict:
     """只读查询账本。operation 为 holdings 或 transactions，无需行情请求。
 
@@ -914,6 +993,7 @@ def query_portfolio_ledger(
     这些不是实时市值或总收益。失败返回 error，不能当成没有记录。
     """
     from a2a.queries import read_query
+
     params = {"ticker": ticker, "market": market, "limit": limit, "offset": offset}
     if operation == "holdings":
         params["status"] = status
@@ -921,12 +1001,12 @@ def query_portfolio_ledger(
         params.update(start_date=start_date, end_date=end_date, action=action)
     return _safe_invoke(lambda: read_query(operation, params))
 
-from memory.tools import search_memory, read_memory, get_instrument_timeline
-from agent.chart_tools import annotate_kline
 
 ALL_TOOLS = [
     query_portfolio_ledger,
-    search_memory, read_memory, get_instrument_timeline,
+    search_memory,
+    read_memory,
+    get_instrument_timeline,
     get_portfolio,
     get_return_summary,
     get_holding,

@@ -1,0 +1,26 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".worktrees", "dist"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixture classes deliberately use small callable attributes.
+"tests/test_citations.py" = ["E731"]
+# Manual integration script configures its import path before loading the app.
+"tests/test_manual_trigger_all_jobs.py" = ["E402"]
+
+[tool.coverage.run]
+source = ["domain", "common", "adapters", "agent", "app", "db", "memory", "scheduler", "a2a", "notifier", "runtime"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

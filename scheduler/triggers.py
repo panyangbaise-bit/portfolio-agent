@@ -26,10 +26,7 @@ def is_market_closed(market: str) -> bool:
     close_hour = market_info["close_hour"]
     close_minute = market_info["close_minute"]
 
-    return (
-        now.hour == close_hour
-        and close_minute <= now.minute < close_minute + 30
-    )
+    return now.hour == close_hour and close_minute <= now.minute < close_minute + 30
 
 
 def get_next_market_close(market: str) -> Optional[datetime]:
@@ -51,7 +48,8 @@ def get_next_market_close(market: str) -> Optional[datetime]:
     close = now.replace(
         hour=market_info["close_hour"],
         minute=market_info["close_minute"],
-        second=0, microsecond=0,
+        second=0,
+        microsecond=0,
     )
 
     if now >= close:

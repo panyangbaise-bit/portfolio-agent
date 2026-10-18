@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+
 import yfinance as yf
 
 from adapters.base import MarketAdapter

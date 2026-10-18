@@ -33,9 +33,7 @@ def test_a_share_spot_df_cached_within_ttl(monkeypatch):
 
 
 def test_a_share_spot_uses_stale_cache_when_refresh_fails(monkeypatch):
-    df = pd.DataFrame(
-        [{"代码": "600519", "最新价": 1600.0, "涨跌幅": 1.0, "成交量": 100}]
-    )
+    df = pd.DataFrame([{"代码": "600519", "最新价": 1600.0, "涨跌幅": 1.0, "成交量": 100}])
     calls = {"n": 0}
 
     def fail_then_ok():

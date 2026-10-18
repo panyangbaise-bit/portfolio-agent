@@ -17,10 +17,10 @@ load_dotenv()
 from config import config
 from db.repository import get_session, list_job_runs
 from scheduler.cron import (
+    _manual_runs,
     start_scheduler,
     stop_scheduler,
     trigger_job,
-    _manual_runs,
 )
 
 ALL_JOBS = [
@@ -52,15 +52,17 @@ def main():
     print("=" * 60)
 
     # --- Config check ---
-    print(f"\n📱 Telegram:")
+    print("\n📱 Telegram:")
     print(f"   Bot token: {'✅ set' if config.TELEGRAM_BOT_TOKEN else '❌ MISSING'}")
     if config.TELEGRAM_CHAT_ID:
         print(f"   Chat ID:   ✅ {config.TELEGRAM_CHAT_ID}")
     else:
-        print(f"   Chat ID:   ⚠️  NOT SET — notifications will be logged but not sent")
-        print(f"   → To fix: message your bot on Telegram, then set TELEGRAM_CHAT_ID in .env")
+        print("   Chat ID:   ⚠️  NOT SET — notifications will be logged but not sent")
+        print("   → To fix: message your bot on Telegram, then set TELEGRAM_CHAT_ID in .env")
 
-    print(f"\n🤖 DeepSeek: {'✅ ' + config.DEEPSEEK_MODEL if config.DEEPSEEK_API_KEY else '❌ MISSING'}")
+    print(
+        f"\n🤖 DeepSeek: {'✅ ' + config.DEEPSEEK_MODEL if config.DEEPSEEK_API_KEY else '❌ MISSING'}"
+    )
 
     # --- Start scheduler ---
     start_scheduler()

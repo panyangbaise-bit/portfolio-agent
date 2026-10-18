@@ -11,8 +11,9 @@ try:
 except ImportError:  # pragma: no cover
     from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
-from agent.graph import agent_graph
+from adapters.news import news_adapter
 from agent.citations import annotate_sources
+from agent.graph import agent_graph
 from agent.session import AgentSessionManager
 from agent.system_prompt import (
     AFTER_MARKET_PROMPT_EXTRA,
@@ -20,15 +21,15 @@ from agent.system_prompt import (
     NEWS_TRIGGER_PROMPT_EXTRA,
     TRADE_REVIEW_PROMPT_EXTRA,
 )
-from adapters.news import news_adapter
 from config import config
 from db.repository import (
     get_all_holdings,
     get_recent_transactions,
-    get_session as get_db_session,
     get_transactions_for_holding,
 )
-
+from db.repository import (
+    get_session as get_db_session,
+)
 
 _MARKET_JOB_IDS = {
     "US": "us_after_market",
@@ -82,12 +83,15 @@ def run_after_market_analysis(market: str) -> str:
     context = AFTER_MARKET_PROMPT_EXTRA.format(market=market_name)
     message = HumanMessage(content=f"请对{market_name}市场的持仓进行盘后分析。")
 
-    result = _invoke_agent(session, {
-        "messages": [message],
-        "session_id": session.session_id,
-        "triggered_by": "schedule",
-        "extra_context": context,
-    })
+    result = _invoke_agent(
+        session,
+        {
+            "messages": [message],
+            "session_id": session.session_id,
+            "triggered_by": "schedule",
+            "extra_context": context,
+        },
+    )
 
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
@@ -123,13 +127,16 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
         )
     )
 
-    result = _invoke_agent(session, {
-        "messages": [message],
-        "session_id": session.session_id,
-        "triggered_by": "event",
-        "extra_context": context,
-        "citation_sources": citation_sources,
-    })
+    result = _invoke_agent(
+        session,
+        {
+            "messages": [message],
+            "session_id": session.session_id,
+            "triggered_by": "event",
+            "extra_context": context,
+            "citation_sources": citation_sources,
+        },
+    )
 
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
@@ -180,9 +187,7 @@ def _load_monthly_inputs(days: int) -> dict:
             ticker = holding.ticker if holding else "?"
             ts = txn.date.strftime("%Y-%m-%d") if txn.date else "—"
             note = f" | {txn.notes}" if txn.notes else ""
-            trade_lines.append(
-                f"- [{ts}] {ticker} {txn.action} {txn.shares} @ {txn.price}{note}"
-            )
+            trade_lines.append(f"- [{ts}] {ticker} {txn.action} {txn.shares} @ {txn.price}{note}")
             if (
                 holding
                 and (txn.action or "").lower() == "sell"
@@ -238,12 +243,15 @@ def run_trade_review_analysis(days: int = 31) -> Optional[str]:
         content="请写月度总结：总收益、仓位、本月成交与清仓，以及建议执行情况。没有成交也要评价当前组合。"
     )
 
-    result = _invoke_agent(session, {
-        "messages": [message],
-        "session_id": session.session_id,
-        "triggered_by": "schedule",
-        "extra_context": context,
-    })
+    result = _invoke_agent(
+        session,
+        {
+            "messages": [message],
+            "session_id": session.session_id,
+            "triggered_by": "schedule",
+            "extra_context": context,
+        },
+    )
 
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
@@ -274,9 +282,9 @@ def build_exit_context(
 
 def run_exit_analysis(holding_id: int, txn_id: int) -> str:
     """Review one fully exited holding. Raises if the holding is missing."""
-    from app.components.portfolio_valuation import position_pnl
-    from app.fx import currency_for_market, get_cny_rates
+    from adapters.fx import currency_for_market, get_cny_rates
     from db.models import Holding
+    from domain.valuation import position_pnl
 
     db = get_db_session()
     try:
@@ -318,12 +326,15 @@ def run_exit_analysis(holding_id: int, txn_id: int) -> str:
     message = HumanMessage(
         content=f"请复盘 {ticker} 的清仓（成交 #{txn_id}）。只给文字结论，不要 save_recommendation。"
     )
-    result = _invoke_agent(session, {
-        "messages": [message],
-        "session_id": session.session_id,
-        "triggered_by": "event",
-        "extra_context": context,
-    })
+    result = _invoke_agent(
+        session,
+        {
+            "messages": [message],
+            "session_id": session.session_id,
+            "triggered_by": "event",
+            "extra_context": context,
+        },
+    )
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
     session.finish(summary=text)
@@ -413,6 +424,7 @@ def run_ad_hoc_query_stream(
             prior.append(AIMessage(content=content))
 
     from agent.access import EXTERNAL_QUERY_CONTEXT
+
     state = {
         "messages": prior + [HumanMessage(content=question)],
         "session_id": session.session_id,
@@ -428,9 +440,7 @@ def run_ad_hoc_query_stream(
     sid = session.session_id
 
     try:
-        for mode, chunk in agent_graph.stream(
-            state, stream_mode=["updates", "messages"]
-        ):
+        for mode, chunk in agent_graph.stream(state, stream_mode=["updates", "messages"]):
             if time.monotonic() > deadline:
                 msg = f"Agent run timed out after {timeout:.0f}s"
                 session.fail(summary=f"Q: {question}\nA: {msg}")

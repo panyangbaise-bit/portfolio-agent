@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Configure loopback API and private tokens without printing credentials."""
+
 import argparse
 import os
-from pathlib import Path
 import secrets
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values, set_key
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-url")
-parser.add_argument("--a2a-only", action="store_true", help="Enable A2A, preserve existing endpoints, leave Actions unchanged")
+parser.add_argument(
+    "--a2a-only",
+    action="store_true",
+    help="Enable A2A, preserve existing endpoints, leave Actions unchanged",
+)
 parser.add_argument("--env-file", type=Path, default=Path(__file__).resolve().parents[1] / ".env")
 args = parser.parse_args()
 path = args.env_file
@@ -23,21 +28,34 @@ if not base:
     base = (values.get("A2A_PUBLIC_URL") if args.a2a_only else None) or f"http://127.0.0.1:{port}"
 base = base.rstrip("/")
 url = urlsplit(base)
-if (url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password
-        or url.path not in {"", "/"} or url.query or url.fragment):
+if (
+    url.scheme not in {"http", "https"}
+    or not url.hostname
+    or url.username
+    or url.password
+    or url.path not in {"", "/"}
+    or url.query
+    or url.fragment
+):
     raise SystemExit("Use an origin URL, e.g. https://portfolio.example.com")
-if not args.a2a_only and url.hostname not in {"127.0.0.1", "localhost", "::1"} and (url.scheme != "https" or url.port not in {None, 443}):
+if (
+    not args.a2a_only
+    and url.hostname not in {"127.0.0.1", "localhost", "::1"}
+    and (url.scheme != "https" or url.port not in {None, 443})
+):
     raise SystemExit("Public GPT Actions require HTTPS on port 443")
 original_stat = path.stat()
 updates = {
-    "A2A_ENABLED": "true", "A2A_PORT": port, "A2A_PUBLIC_URL": base,
+    "A2A_ENABLED": "true",
+    "A2A_PORT": port,
+    "A2A_PUBLIC_URL": base,
     "A2A_HOST": (values.get("A2A_HOST") or "127.0.0.1") if args.a2a_only else "127.0.0.1",
 }
 if not args.a2a_only:
     updates.update(ACTIONS_ENABLED="true", ACTIONS_PUBLIC_URL=base)
 path.chmod(0o600)
 try:
-    for key in (("A2A_TOKEN",) if args.a2a_only else ("A2A_TOKEN", "ACTIONS_TOKEN")):
+    for key in ("A2A_TOKEN",) if args.a2a_only else ("A2A_TOKEN", "ACTIONS_TOKEN"):
         if not values.get(key):
             set_key(path, key, secrets.token_urlsafe(32))
     for key, value in updates.items():
@@ -48,4 +66,6 @@ finally:
     path.chmod(0o600)
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         os.chown(path, original_stat.st_uid, original_stat.st_gid)
-print(f"Configured external API at {base}; private tokens stored in {path}. Existing tokens preserved.")
+print(
+    f"Configured external API at {base}; private tokens stored in {path}. Existing tokens preserved."
+)

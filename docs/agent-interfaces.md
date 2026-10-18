@@ -4,7 +4,7 @@ Portfolio Agent 提供两条访问同一份账本的通道：其他 agent 通过
 
 ## 共用 HTTPS 域名：UI + A2A（推荐）
 
-使用 `https://portfolio.panyang666.com`，无需额外 DNS 记录或证书。Caddy 按路径转发：网页到本机 8501，A2A 到本机 8502；A2A 继续使用现有 Bearer token，不依赖网页登录。新增配置文件不代表服务器已经部署。
+以下以 `https://portfolio.example.com` 为例，请替换为你自己的 HTTPS 域名；UI 与 A2A 共用域名，无需额外 DNS 记录或证书。Caddy 按路径转发：网页到本机 8501，A2A 到本机 8502；A2A 继续使用现有 Bearer token，不依赖网页登录。新增配置文件不代表服务器已经部署。
 
 服务器 `/opt/portfolio-agent/.env` 修改以下字段，保留原来的 `A2A_TOKEN` 和其他配置：
 
@@ -12,28 +12,28 @@ Portfolio Agent 提供两条访问同一份账本的通道：其他 agent 通过
 A2A_ENABLED=true
 A2A_HOST=127.0.0.1
 A2A_PORT=8502
-A2A_PUBLIC_URL=https://portfolio.panyang666.com
+A2A_PUBLIC_URL=https://portfolio.example.com
 ```
 
-把 [deploy/Caddyfile.portfolio](../deploy/Caddyfile.portfolio) 的内容放到 `/etc/caddy/conf.d/portfolio.caddy`，替换该域名原来的配置。主 `/etc/caddy/Caddyfile` 必须已包含 `import /etc/caddy/conf.d/*.caddy`，同一域名只定义一次。不要使用 `handle_path`，它会剥离 A2A 所需的路径。此配置同时支持 A2A 1.0 和旧版 0.3，不公开 Actions 路由。
+把 [deploy/Caddyfile.portfolio](../deploy/Caddyfile.portfolio) 中的示例域名替换为实际域名后，放到 `/etc/caddy/conf.d/portfolio.caddy`，替换该域名原来的配置。主 `/etc/caddy/Caddyfile` 必须已包含 `import /etc/caddy/conf.d/*.caddy`，同一域名只定义一次。不要使用 `handle_path`，它会剥离 A2A 所需的路径。此配置同时支持 A2A 1.0 和旧版 0.3，不公开 Actions 路由。
 
 ```bash
 sudo caddy validate --config /etc/caddy/Caddyfile
 # 仅在 validate 成功后执行：
 sudo systemctl reload caddy
 sudo systemctl restart portfolio-agent
-curl --fail --show-error https://portfolio.panyang666.com/a2a/v1/.well-known/agent-card.json
+curl --fail --show-error https://portfolio.example.com/a2a/v1/.well-known/agent-card.json
 curl --silent --show-error -o /dev/null -w '%{http_code}\n' \
-  -X POST https://portfolio.panyang666.com/a2a/v1 \
+  -X POST https://portfolio.example.com/a2a/v1 \
   -H 'Content-Type: application/json' --data '{}'
 ```
 
-Agent Card 的 `supportedInterfaces[0].url` 应为 `https://portfolio.panyang666.com/a2a/v1`；第二个请求未带 token，应返回 **401**。如果返回 HTML，说明请求仍然转发到 UI。若返回 502，检查 A2A 是否在本机 8502 运行。
+Agent Card 的 `supportedInterfaces[0].url` 应为 `https://portfolio.example.com/a2a/v1`；第二个请求未带 token，应返回 **401**。如果返回 HTML，说明请求仍然转发到 UI。若返回 502，检查 A2A 是否在本机 8502 运行。
 
 HTTPS 验证成功后，在本机项目目录更新桥接器：
 
 ```bash
-.venv/bin/python deploy/install-a2a-mcp.py --base-url https://portfolio.panyang666.com --codex
+.venv/bin/python deploy/install-a2a-mcp.py --base-url https://portfolio.example.com --codex
 node deploy/test-a2a-mcp.mjs
 ```
 

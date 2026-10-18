@@ -1,7 +1,7 @@
 """Build immutable chart artifacts from previously observed tool results."""
 
-from datetime import date, datetime, timezone
 import json
+from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 from uuid import uuid4
 
@@ -10,7 +10,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent.kline import finite_number
-from db.models import AnalysisChart, AgentSession
+from db.models import AgentSession, AnalysisChart
 from db.repository import get_session
 
 
@@ -35,16 +35,28 @@ def build_chart_payload(state, source_tool_call_id, ticker, title, annotations, 
     """Resolve an exact get_kline call; the LLM never supplies the price series."""
     ticker = ticker.strip().upper()
     calls = {
-        call["id"]: call for message in state.get("messages", [])
+        call["id"]: call
+        for message in state.get("messages", [])
         for call in (getattr(message, "tool_calls", None) or [])
     }
     if not source_tool_call_id:
         # Some model providers do not expose call IDs as readable content.
         # Resolve the latest completed query containing this ticker instead.
         completed = {getattr(m, "tool_call_id", None) for m in state.get("messages", [])}
-        source_tool_call_id = next((call_id for call_id, candidate in reversed(list(calls.items()))
-            if candidate.get("name") == "get_kline" and call_id in completed
-            and ticker in [t.strip().upper() for t in candidate.get("args", {}).get("ticker", "").split(",")]), "")
+        source_tool_call_id = next(
+            (
+                call_id
+                for call_id, candidate in reversed(list(calls.items()))
+                if candidate.get("name") == "get_kline"
+                and call_id in completed
+                and ticker
+                in [
+                    t.strip().upper()
+                    for t in candidate.get("args", {}).get("ticker", "").split(",")
+                ]
+            ),
+            "",
+        )
     call = calls.get(source_tool_call_id)
     if not call or call.get("name") != "get_kline":
         raise ValueError("source_tool_call_id 必须引用本轮已完成的 get_kline 调用")
@@ -54,8 +66,14 @@ def build_chart_payload(state, source_tool_call_id, ticker, title, annotations, 
     if ticker not in tickers or not markets:
         raise ValueError("标的不在该 K 线查询中")
     market = markets[min(tickers.index(ticker), len(markets) - 1)]
-    message = next((m for m in reversed(state.get("messages", []))
-                    if getattr(m, "tool_call_id", None) == source_tool_call_id), None)
+    message = next(
+        (
+            m
+            for m in reversed(state.get("messages", []))
+            if getattr(m, "tool_call_id", None) == source_tool_call_id
+        ),
+        None,
+    )
     if message is None:
         raise ValueError("先完成 get_kline，再调用 annotate_kline")
     data = json.loads(message.content)
@@ -73,8 +91,10 @@ def build_chart_payload(state, source_tool_call_id, ticker, title, annotations, 
         if any(finite_number(bar.get(k)) is None or float(bar[k]) <= 0 for k in keys):
             raise ValueError("K 线含无效价格，无法绘图")
         if len(keys) == 4 and not (
-            bar["low"] <= min(bar["open"], bar["close"]) <=
-            max(bar["open"], bar["close"]) <= bar["high"]
+            bar["low"]
+            <= min(bar["open"], bar["close"])
+            <= max(bar["open"], bar["close"])
+            <= bar["high"]
         ):
             raise ValueError("K 线高低价顺序无效")
     notes = [ChartAnnotation.model_validate(a).model_dump() for a in annotations]
@@ -92,12 +112,16 @@ def build_chart_payload(state, source_tool_call_id, ticker, title, annotations, 
         if line["kind"] != "trend" and line["start_price"] != line["end_price"]:
             raise ValueError("支撑/阻力线两端价格必须相同")
     return {
-        "version": 1, "ticker": ticker, "market": market,
-        "period": args.get("period", "3mo"), "title": title or ticker,
+        "version": 1,
+        "ticker": ticker,
+        "market": market,
+        "period": args.get("period", "3mo"),
+        "title": title or ticker,
         "source_tool_call_id": source_tool_call_id,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "bars": sorted(data, key=lambda b: b["date"]),
-        "annotations": notes, "lines": segments,
+        "annotations": notes,
+        "lines": segments,
     }
 
 
@@ -124,7 +148,12 @@ def annotate_kline(
             raise ValueError("图表标题最多 160 字")
         session_id = state.get("session_id")
         payload = build_chart_payload(
-            state, source_tool_call_id, ticker, title, annotations or [], lines or [],
+            state,
+            source_tool_call_id,
+            ticker,
+            title,
+            annotations or [],
+            lines or [],
         )
         with get_session() as db:
             if not session_id or db.get(AgentSession, session_id) is None:
@@ -133,7 +162,8 @@ def annotate_kline(
             db.add(AnalysisChart(id=chart_id, session_id=session_id, payload=payload))
             db.commit()
         return {
-            "status": "saved", "chart_id": chart_id,
+            "status": "saved",
+            "chart_id": chart_id,
             "markdown": f'```kline\n{{"chart_id":"{chart_id}"}}\n```',
             "message": "将 markdown 原样插入最终报告，并保留文字结论供通知渠道阅读。",
         }

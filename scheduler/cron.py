@@ -9,10 +9,10 @@ from apscheduler.triggers.cron import CronTrigger
 
 from config import config
 from scheduler.jobs import (
-    job_after_market_us,
     job_after_market_cn,
-    job_after_market_hk,
     job_after_market_crypto,
+    job_after_market_hk,
+    job_after_market_us,
     job_hourly_news_poll,
     job_monthly_trade_review,
 )
@@ -150,7 +150,8 @@ def stop_scheduler():
     """Stop the scheduler gracefully."""
     global _scheduler
     if _scheduler:
-        _scheduler.shutdown(wait=False)
+        if _scheduler.running:
+            _scheduler.shutdown(wait=False)
         _scheduler = None
         logger.info("Scheduler stopped.")
 
@@ -205,15 +206,19 @@ def trigger_job(job_id: str) -> bool:
 
     def _wrapper():
         from datetime import datetime, timezone
-        from app.timeutil import format_display_time
+
+        from common.time import format_display_time
 
         with _manual_runs_lock:
             state["started_at"] = format_display_time(
-                datetime.now(timezone.utc), fmt="%Y-%m-%d %H:%M:%S",
+                datetime.now(timezone.utc),
+                fmt="%Y-%m-%d %H:%M:%S",
             )
         try:
             outcome = func()
-            status = outcome.get("status", "completed") if isinstance(outcome, dict) else "completed"
+            status = (
+                outcome.get("status", "completed") if isinstance(outcome, dict) else "completed"
+            )
             with _manual_runs_lock:
                 state["status"] = status
                 if status == "failed":

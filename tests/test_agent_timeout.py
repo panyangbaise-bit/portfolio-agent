@@ -72,12 +72,15 @@ def test_invoke_agent_marks_session_failed_on_timeout(monkeypatch, db_factory):
     mgr.start()
 
     with pytest.raises(AgentRunTimeout):
-        _invoke_agent(mgr, {
-            "messages": [],
-            "session_id": mgr.session_id,
-            "triggered_by": "event",
-            "extra_context": "",
-        })
+        _invoke_agent(
+            mgr,
+            {
+                "messages": [],
+                "session_id": mgr.session_id,
+                "triggered_by": "event",
+                "extra_context": "",
+            },
+        )
 
     db = db_factory()
     try:

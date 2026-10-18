@@ -2,13 +2,13 @@
 # One-shot deploy for Ubuntu (venv + systemd).
 #
 # Usage (recommended):
-#   git clone https://github.com/panyangbaise-bit/portfolio-agent.git /opt/portfolio-agent
+#   git clone https://github.com/YOUR_ACCOUNT/portfolio-agent.git /opt/portfolio-agent
 #   cd /opt/portfolio-agent
 #   sudo ./deploy/setup-server.sh
 #
 # Optional env overrides:
 #   APP_DIR=/opt/portfolio-agent
-#   REPO_URL=https://github.com/panyangbaise-bit/portfolio-agent.git
+#   REPO_URL=https://github.com/YOUR_ACCOUNT/portfolio-agent.git
 #   BRANCH=main
 #   SERVICE_USER=admin
 #   SKIP_START=1
@@ -17,7 +17,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/portfolio-agent}"
-REPO_URL="${REPO_URL:-https://github.com/panyangbaise-bit/portfolio-agent.git}"
+REPO_URL="${REPO_URL:-}"
 BRANCH="${BRANCH:-main}"
 SKIP_START="${SKIP_START:-0}"
 SETUP_A2A="${SETUP_A2A:-1}"
@@ -132,6 +132,7 @@ sync_app_code() {
     return
   fi
 
+  [[ -n "${REPO_URL}" ]] || die "首次克隆请通过 REPO_URL 指定仓库地址"
   log "克隆 ${REPO_URL} → ${APP_DIR}"
   mkdir -p "$(dirname "${APP_DIR}")"
   git clone --branch "${BRANCH}" --depth 1 "${REPO_URL}" "${APP_DIR}"
@@ -236,7 +237,7 @@ print_next_steps() {
   log "部署完成。"
   echo "  1) 编辑配置：  sudo nano ${APP_DIR}/.env"
   echo "     必填 DEEPSEEK_API_KEY；公网保持 AUTH_ENABLED=true"
-  echo "     Google 登录：${APP_DIR}/.venv/bin/python ${APP_DIR}/deploy/configure-google-auth.py"
+  echo "     Google 登录：${APP_DIR}/.venv/bin/python ${APP_DIR}/deploy/configure-google-auth.py --base-url https://YOUR_DOMAIN"
   echo "  2) 重启服务：  sudo systemctl restart ${SERVICE_NAME}"
   echo "  3) 查看日志：  journalctl -u ${SERVICE_NAME} -f"
   echo "  4) 配置 HTTPS 域名及 Google 回调地址，详见 docs/google-login.md"

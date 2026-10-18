@@ -1,12 +1,27 @@
 """Explicit allowlist for external portfolio queries."""
 
-READ_ONLY_TOOLS = frozenset({
-    "search_memory", "read_memory", "get_instrument_timeline",
-    "get_portfolio", "get_return_summary", "get_holding", "get_price", "get_kline",
-    "get_financials", "get_fund_info", "get_market_snapshot", "search_ticker_news",
-    "get_market_headlines", "web_search", "get_recommendation_history",
-    "get_trade_history", "get_watchlist", "query_portfolio_ledger",
-})
+READ_ONLY_TOOLS = frozenset(
+    {
+        "search_memory",
+        "read_memory",
+        "get_instrument_timeline",
+        "get_portfolio",
+        "get_return_summary",
+        "get_holding",
+        "get_price",
+        "get_kline",
+        "get_financials",
+        "get_fund_info",
+        "get_market_snapshot",
+        "search_ticker_news",
+        "get_market_headlines",
+        "web_search",
+        "get_recommendation_history",
+        "get_trade_history",
+        "get_watchlist",
+        "query_portfolio_ledger",
+    }
+)
 
 EXTERNAL_QUERY_CONTEXT = """
 ## 当前任务：外部 agent / ChatGPT 的只读查询
