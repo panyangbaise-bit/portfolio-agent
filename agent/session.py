@@ -121,7 +121,7 @@ class AgentSessionManager:
         for item in news_items[:20]:
             title = item.get("title", "")
             summary = item.get("summary", "")
-            ts = item.get("published_at", "")
+            ts = item.get("published_at") or "发布时间未知，不能判定今日新增"
             category = item.get("category") or "news"
             ticker = item.get("related_ticker")
             tag = category

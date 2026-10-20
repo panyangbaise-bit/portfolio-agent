@@ -14,6 +14,8 @@ except ImportError:  # pragma: no cover
 from adapters.news import news_adapter
 from agent.citations import annotate_sources
 from agent.graph import agent_graph
+from agent.news_delivery import NewsReport, event_key
+from agent.research import news_identity, select_news
 from agent.session import AgentSessionManager
 from agent.system_prompt import (
     AFTER_MARKET_PROMPT_EXTRA,
@@ -99,7 +101,9 @@ def run_after_market_analysis(market: str) -> str:
     return text
 
 
-def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
+def run_news_triggered_analysis(
+    news_items: list[dict], portfolio_signature: str = ""
+) -> Optional[str]:
     """Run analysis triggered by hourly news polling.
 
     Analyzes both ticker-related news and market headlines for portfolio impact.
@@ -108,16 +112,22 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
     if not news_items:
         return None
 
+    selected_news = select_news(news_items)
     session = AgentSessionManager(
         triggered_by="event",
         job_id="hourly_news",
         market=None,
-        news_snapshot={"count": len(news_items), "sample": news_items[:8]},
+        news_snapshot={
+            "count": len(news_items),
+            "sample": selected_news[:8],
+            "event_keys": [event_key(n) for n in selected_news if n.get("category") != "coverage"],
+            "portfolio_signature": portfolio_signature,
+        },
     )
     session.start()
 
     citation_sources = {}
-    cited_news = annotate_sources(news_items[:20], citation_sources)
+    cited_news = annotate_sources(selected_news, citation_sources)
     summary = session.snapshot_news_for_context(cited_news)
     context = NEWS_TRIGGER_PROMPT_EXTRA.format(news_summary=summary)
     message = HumanMessage(
@@ -135,13 +145,20 @@ def run_news_triggered_analysis(news_items: list[dict]) -> Optional[str]:
             "triggered_by": "event",
             "extra_context": context,
             "citation_sources": citation_sources,
+            "news_coverage_gaps": [
+                n["related_ticker"]
+                for n in news_items
+                if n.get("category") == "coverage" and n.get("related_ticker")
+            ],
         },
     )
 
     last_msg = result["messages"][-1]
     text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
     session.finish(summary=text)
-    return text
+    report = NewsReport(text, result.get("news_notification"))
+    report.session_id = session.session_id
+    return report
 
 
 def compose_monthly_context(payload: dict, days: int = 31) -> Optional[str]:
@@ -544,13 +561,46 @@ def poll_news_for_portfolio(tickers: list[str]) -> list[dict]:
             item["related_ticker"] = related_ticker
         all_news.append(item)
 
-    for article in news_adapter.get_headlines(10):
-        _add(article, "headline")
-    for article in news_adapter.get_latest_news(10):
-        _add(article, "headline")
-
+    # Security-specific items are collected first so the context cap cannot starve them.
     for ticker in tickers:
-        for article in news_adapter.search_ticker_news(ticker, days=1):
-            _add(article, "ticker", related_ticker=ticker)
+        try:
+            articles = news_adapter.search_ticker_news(news_identity(ticker)[1], days=1)
+            for article in articles:
+                _add(article, "ticker", related_ticker=ticker)
+            if not articles:
+                _add(
+                    {
+                        "title": f"{ticker} 新闻覆盖不足",
+                        "status": "empty",
+                        "summary": "该来源未检索到新闻，不代表没有事件；需独立检索。",
+                    },
+                    "coverage",
+                    related_ticker=ticker,
+                )
+        except Exception as exc:
+            _add(
+                {
+                    "title": f"{ticker} 新闻查询失败",
+                    "status": "error",
+                    "error": type(exc).__name__,
+                    "summary": "来源不可用，需独立检索。",
+                },
+                "coverage",
+                related_ticker=ticker,
+            )
 
-    return all_news
+    for fetch in (news_adapter.get_headlines, news_adapter.get_latest_news):
+        try:
+            for article in fetch(10):
+                _add(article, "headline")
+        except Exception as exc:
+            _add(
+                {
+                    "title": "宏观新闻来源不完整",
+                    "status": "error",
+                    "error": type(exc).__name__,
+                    "summary": "来源不可用，不代表没有宏观事件。",
+                },
+                "coverage",
+            )
+    return select_news(all_news, limit=len(all_news))

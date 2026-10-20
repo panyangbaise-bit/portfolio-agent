@@ -27,7 +27,12 @@ class ChartLine(BaseModel):
     start_date: str
     end_date: str
     start_price: float = Field(gt=0, allow_inf_nan=False)
-    end_price: float = Field(gt=0, allow_inf_nan=False)
+    end_price: float | None = Field(
+        default=None,
+        gt=0,
+        allow_inf_nan=False,
+        description="水平支撑/阻力线可省略，自动等于 start_price；趋势线必填",
+    )
     text: str = Field(min_length=1, max_length=100)
 
 
@@ -105,6 +110,10 @@ def build_chart_payload(state, source_tool_call_id, ticker, title, annotations, 
         if note["date"] not in dates:
             raise ValueError("标注日期必须存在于行情快照中")
     for line in segments:
+        if line["end_price"] is None:
+            if line["kind"] == "trend":
+                raise ValueError("趋势线必须提供 end_price")
+            line["end_price"] = line["start_price"]
         if line["start_date"] not in dates or line["end_date"] not in dates:
             raise ValueError("划线端点日期必须存在于行情快照中")
         if line["start_date"] >= line["end_date"]:
@@ -140,7 +149,8 @@ def annotate_kline(
     可选 source_tool_call_id 精确指定一次查询。无需重复传行情。
     annotations: [{date, price, text}]，最多12项；lines: [{kind, start_date,
     end_date, start_price, end_price, text}]，最多8项，kind 为 support/resistance/trend。
-    日期必须来自该查询，水平线两端价格相同。只标注有数据依据的历史结构，不作目标价预测。
+    日期必须来自该查询，水平线只需 start_price，可省略 end_price；趋势线必须提供两端价格。
+    只标注有数据依据的历史结构，不作目标价预测。
     返回 markdown 后，将其原样放入最终回复所需位置；图片数据已持久化，不需复制。
     """
     try:

@@ -167,6 +167,23 @@ def test_chart_source_is_exact_and_batch_market_is_resolved():
     assert payload["bars"][-1]["close"] == 126
     latest = build_chart_payload(source_state(), "", "AAPL", "", [], [])
     assert latest["source_tool_call_id"] == "source-1"
+    horizontal = build_chart_payload(
+        source_state(),
+        "",
+        "AAPL",
+        "",
+        [],
+        [
+            {
+                "kind": "support",
+                "start_date": "2026-09-01",
+                "end_date": "2026-09-02",
+                "start_price": 100,
+                "text": "historical level",
+            }
+        ],
+    )
+    assert horizontal["lines"][0]["end_price"] == 100
     with pytest.raises(ValueError, match="标的"):
         build_chart_payload(source_state(), "source-1", "MSFT", "", [], [])
     with pytest.raises(ValueError, match="source_tool_call_id"):

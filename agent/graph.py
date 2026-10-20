@@ -11,6 +11,7 @@ Uses DeepSeek API via ChatOpenAI (OpenAI-compatible interface).
 
 import json
 from typing import Annotated, Any, Optional
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -19,7 +20,9 @@ from typing_extensions import NotRequired, TypedDict
 
 from agent.access import READ_ONLY_TOOLS
 from agent.citations import SOURCE_TOOLS, annotate_sources, resolve_citations
+from agent.context import model_messages
 from agent.llm import build_deepseek_llm
+from agent.research import verification_plan
 from agent.system_prompt import SYSTEM_PROMPT
 from agent.tool_guards import execute_tool_calls
 from agent.tools import ALL_TOOLS
@@ -41,6 +44,8 @@ class AgentState(TypedDict):
     agent_rounds: NotRequired[int]
     citation_sources: NotRequired[dict]
     read_only: NotRequired[bool]
+    news_coverage_gaps: NotRequired[list[str]]
+    news_notification: NotRequired[dict]
 
 
 def _truncate_result(text: Any) -> Optional[str]:
@@ -104,6 +109,7 @@ def _persist_tool_calls(state: AgentState, tool_messages: list) -> None:
 
 
 def _with_system_prompt(state: AgentState, messages: list) -> list:
+    messages = model_messages(messages)
     has_system = any(isinstance(m, SystemMessage) for m in messages)
     if has_system:
         return list(messages)
@@ -158,6 +164,29 @@ def build_agent_graph() -> StateGraph:
                 "tool_loop_halted": True,
             }
 
+        gaps = verification_plan(
+            state["messages"], coverage_gaps=state.get("news_coverage_gaps", [])
+        )
+        if gaps:
+            return {
+                "messages": [
+                    AIMessage(
+                        content="检索证据覆盖不足，补充独立来源；未检索到不等于事件不存在。",
+                        tool_calls=[
+                            {
+                                "id": "verify-" + uuid4().hex,
+                                "name": "web_search",
+                                "args": {k: v for k, v in gap.items() if k != "reason"},
+                                "type": "tool_call",
+                            }
+                            for gap in gaps
+                        ],
+                        additional_kwargs={"verification_reasons": [g["reason"] for g in gaps]},
+                    )
+                ],
+                "agent_rounds": rounds + 1,
+            }
+
         model = llm_read_only if state.get("read_only") else llm_with_tools
         response = model.invoke(messages)
         if not response.tool_calls:
@@ -194,6 +223,14 @@ def build_agent_graph() -> StateGraph:
         tool_messages = annotated
         _persist_tool_calls(state, tool_messages)
         out = {"messages": tool_messages, "citation_sources": sources}
+        for message in tool_messages:
+            if message.name == "set_news_notification":
+                try:
+                    decision = json.loads(message.content)
+                except (ValueError, TypeError):
+                    continue
+                if decision.get("status") == "recorded":
+                    out["news_notification"] = decision
         if result.get("tool_loop_halted"):
             out["tool_loop_halted"] = True
         return out

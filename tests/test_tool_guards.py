@@ -35,6 +35,68 @@ def test_fingerprint_stable_for_same_params():
     assert a != c
 
 
+def test_read_only_calls_execute_concurrently_and_keep_message_order():
+    import threading
+
+    barrier = threading.Barrier(2, timeout=1)
+
+    @tool("get_price")
+    def price(ticker: str) -> dict:
+        """Read test price."""
+        barrier.wait()
+        return {"ticker": ticker}
+
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "get_price", "id": ticker, "args": {"ticker": ticker}}
+                    for ticker in ("AAA", "BBB")
+                ],
+            )
+        ]
+    }
+    out = execute_tool_calls(state, [price], timeout=2)
+    assert [m.tool_call_id for m in out["messages"]] == ["AAA", "BBB"]
+    assert [json.loads(m.content) for m in out["messages"]] == [
+        {"ticker": "AAA"},
+        {"ticker": "BBB"},
+    ]
+
+
+def test_batches_with_writes_remain_sequential():
+    visited = []
+
+    @tool("get_price")
+    def price() -> dict:
+        """Read test price."""
+        visited.append("read")
+        return {"price": 1}
+
+    @tool
+    def record_action() -> dict:
+        """Write test action."""
+        assert visited == ["read"]
+        visited.append("write")
+        return {"status": "recorded"}
+
+    state = {
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "get_price", "id": "read", "args": {}},
+                    {"name": "record_action", "id": "write", "args": {}},
+                ],
+            )
+        ]
+    }
+    out = execute_tool_calls(state, [price, record_action], timeout=2)
+    assert visited == ["read", "write"]
+    assert json.loads(out["messages"][-1].content)["status"] == "recorded"
+
+
 def test_count_fingerprint_in_messages():
     fp = tool_call_fingerprint("get_price", {"ticker": "AAPL"})
     msgs = [

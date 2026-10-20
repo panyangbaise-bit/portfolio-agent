@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import yfinance as yf
@@ -28,7 +28,11 @@ class USMarketAdapter(MarketAdapter):
                 "currency": "USD",
                 "change_pct": None,
                 "volume": None,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": None,
+                "observed_at": None,
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "quote_type": "latest_available",
+                "note": "来源未提供报价时间；抓取时间不等于成交时间。请结合K线日期，勿称为实时价。",
             }
         except Exception as exc:
             return error_payload(exc, ticker=ticker.upper())
@@ -60,6 +64,25 @@ class USMarketAdapter(MarketAdapter):
             return {
                 "ticker": ticker.upper(),
                 "report_date": self._safe_date(info.get("lastFiscalYearEnd")),
+                "periods": {
+                    "report_date": "last_fiscal_year_end; not the period of every field",
+                    "revenue": "TTM",
+                    "eps": "TTM",
+                    "pe_ratio": "trailing",
+                    "forward_eps": "provider_forward_estimate; horizon unconfirmed",
+                    "forward_pe": "provider_forward_estimate; horizon unconfirmed",
+                    "revenue_growth": "provider_reported_growth; comparison period unconfirmed",
+                    "roe": "provider_reported; period unconfirmed",
+                    "profit_margins": "provider_reported; period unconfirmed",
+                },
+                "units": {
+                    "revenue": info.get("financialCurrency"),
+                    "debt_to_equity": "percent",
+                    "roe": "ratio",
+                    "profit_margins": "ratio",
+                    "revenue_growth": "ratio",
+                },
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
                 "revenue": info.get("totalRevenue"),
                 "revenue_growth": self._safe_pct(info.get("revenueGrowth")),
                 "eps": info.get("trailingEps"),

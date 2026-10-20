@@ -13,12 +13,16 @@ def finite_number(value):
         return None
 
 
-def enrich_kline(rows: list[dict], market: str) -> list[dict]:
+def enrich_kline(rows: list[dict] | dict, market: str) -> list[dict] | dict:
     """Keep the list contract, normalize missing volume, add trailing indicators.
 
     MA windows include the current bar. ratio5 uses the *previous* five bars.
     Missing samples or insufficient history produce None, never fabricated zeroes.
     """
+    if isinstance(rows, dict):
+        if rows.get("error"):
+            return rows
+        raise ValueError("Expected a price series, not an unrecognized object")
     result = []
     volumes = []
     for source in sorted(rows, key=lambda row: row["date"]):
@@ -31,8 +35,13 @@ def enrich_kline(rows: list[dict], market: str) -> list[dict]:
         row.setdefault("volume_unit", "lot" if market.upper() == "CN" else "share")
         row.setdefault("volume_kind", "traded_volume")
         if row["series_kind"] == "nav":
+            volume = None
+            row["volume"] = None
             row["volume_unit"] = None
             row["volume_kind"] = "unavailable"
+            row["analysis_limitations"] = (
+                "净值无日内高低价和成交量；缩量、影线、日内反转条件均无法判断"
+            )
 
         def average(values, window):
             if len(values) != window or any(v is None for v in values):

@@ -5,7 +5,7 @@ interface to the LLM. The agent does not know about adapters, markets,
 or databases — it just calls these functions.
 """
 
-from typing import Annotated, Any, Callable, List, Optional, TypeVar
+from typing import Annotated, Any, Callable, List, Literal, Optional, TypeVar
 
 from langchain.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -21,6 +21,8 @@ from adapters.news import news_adapter
 from adapters.safe import error_payload
 from agent.chart_tools import annotate_kline
 from agent.kline import enrich_kline
+from agent.news_delivery import set_news_notification
+from agent.research import news_identity
 from db.repository import (
     create_recommendation,
     find_similar_recommendation,
@@ -310,6 +312,7 @@ def get_price(ticker: str, market: str) -> dict:
 
     A 股场外基金/ETF联接（如 020357）返回的是单位净值（quote_type=nav, lag=T+1），
     change_pct 是相对上一净值日，不是今日盘中涨跌；请看 nav_date。
+    CN 重码必须明确类型：index:000688（科创50）、stock:000001、fund:000001。
 
     Args:
         ticker: 单个标的代码，或多个逗号分隔
@@ -342,7 +345,9 @@ def get_price(ticker: str, market: str) -> dict:
 
 
 @tool
-def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dict:
+def get_kline(
+    ticker: str, market: str, period: str = "3mo", detail: Literal["summary", "full"] = "summary"
+) -> list[dict] | dict:
     """获取历史K线数据。支持单个和批量查询。
 
     单个: get_kline(ticker="AAPL", market="US", period="3mo")
@@ -353,7 +358,11 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dic
     非盘中量比）、volume_change_pct（较前一根量变化%）。不足窗口/缺失/零分母返回 null。
     volume_unit: lot=手、share=股、usd=美元；volume_kind 区分成交量与滚动24小时成交额。
     series_kind=nav 为净值线，price 为价格采样线，不可当作 OHLC；不跨市场比较原始量。
+    CN 指数使用 index:000688（科创50），股票 stock:000001，基金 fund:000001。
+    无成交量/日内高低价时，缩量/长下影条件只能标记「无法判断」，不能判定未满足。
     period 是回溯范围，日频数据。要在报告中画图，随后调用 annotate_kline(ticker=...)。
+    detail=summary 默认向模型展示指标、最近20根与区间极值；完整原始序列仍保留。
+    需要核对更早的具体日期时传 detail=full，查看全量序列；不要重复查询重叠周期。
     """
     tickers = [t.strip().upper() for t in str(ticker).split(",") if t.strip()]
     if not tickers:
@@ -365,7 +374,7 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dic
             return {"error": f"no adapter for market: {market}"}
         item_market = next(m.strip() for m in market.split(",") if m.strip())
         return _safe_invoke(
-            lambda: enrich_kline(ad.get_kline(tickers[0], period), item_market), empty=[]
+            lambda: enrich_kline(ad.get_kline(tickers[0], period), item_market), ticker=tickers[0]
         )
 
     def _one(t: str):
@@ -376,8 +385,8 @@ def get_kline(ticker: str, market: str, period: str = "3mo") -> list[dict] | dic
             markets = [m.strip().upper() for m in market.split(",") if m.strip()]
             item_market = markets[min(tickers.index(t), len(markets) - 1)]
             return t, enrich_kline(ad.get_kline(t, period), item_market)
-        except Exception:
-            return t, []
+        except Exception as exc:
+            return t, error_payload(exc, ticker=t)
 
     return {"batch": True, "results": dict(_map_parallel(tickers, _one))}
 
@@ -653,8 +662,7 @@ def search_ticker_news(ticker: str, days: int = 7) -> dict:
 
     if len(tickers) == 1:
         results = _safe_invoke(
-            lambda: news_adapter.search_ticker_news(tickers[0], days),
-            empty=[],
+            lambda: news_adapter.search_ticker_news(news_identity(tickers[0])[1], days),
         )
         if isinstance(results, dict) and results.get("error"):
             return {"ticker": tickers[0], "results": [], **results}
@@ -662,7 +670,7 @@ def search_ticker_news(ticker: str, days: int = 7) -> dict:
 
     def _one(t: str):
         try:
-            return t, news_adapter.search_ticker_news(t, days)
+            return t, news_adapter.search_ticker_news(news_identity(t)[1], days)
         except Exception as e:
             return t, {"error": str(e)}
 
@@ -670,14 +678,15 @@ def search_ticker_news(ticker: str, days: int = 7) -> dict:
 
 
 @tool
-def get_market_headlines() -> list[dict]:
+def get_market_headlines() -> list[dict] | dict:
     """获取最新的市场头条和要闻。
 
     Returns:
         list[dict]: 新闻列表，每项含 title, url, summary, published_at, author
     """
-    headlines = _safe_invoke(lambda: news_adapter.get_headlines(10), empty=[])
-    latest = _safe_invoke(lambda: news_adapter.get_latest_news(10), empty=[])
+    headlines = _safe_invoke(lambda: news_adapter.get_headlines(10))
+    latest = _safe_invoke(lambda: news_adapter.get_latest_news(10))
+    errors = [r for r in (headlines, latest) if isinstance(r, dict) and r.get("error")]
     if not isinstance(headlines, list):
         headlines = []
     if not isinstance(latest, list):
@@ -689,16 +698,24 @@ def get_market_headlines() -> list[dict]:
         if key and key not in seen:
             seen.add(key)
             merged.append(item)
+    if errors:
+        return {
+            "status": "partial" if merged else "error",
+            "results": merged[:15],
+            "errors": errors,
+            "coverage": "unknown",
+            "message": "新闻抓取不完整，不能据此断言没有新闻；请用 web_search 补充。",
+        }
     return merged[:15]
 
 
 @tool
 def web_search(query: str, count: int = 5, days: int = 7) -> dict:
-    """用 Brave 搜索公开网页。只在华尔街见闻没有相关新闻时作为补充。
+    """用 Brave 检索原始披露和独立来源，可直接作为公司事件的第一步。
 
-    先调用 search_ticker_news（中文关键词）和 get_market_headlines。
-    仅当见闻结果为空，或标题/摘要与标的、事件明显无关时，再调用本工具。
-    不要把它当作查新闻的第一步，也不要为每个持仓都搜一遍。
+    单一来源、空结果、仅标题、缺日期、冲突报道、财报日/诉讼未确认时应补证。
+    美股优先英文公司名/代码 + investor relations / earnings / SEC。
+    搜索摘要只是线索；日期未知不能断言为最新事实。已有相关媒体报道仍可交叉核验。
 
     Args:
         query: 搜索词，例如「英伟达 财报」或「腾讯 回购」
@@ -989,6 +1006,7 @@ def query_portfolio_ledger(
 
     holdings 默认查询未平仓，可传 status=open/closed/all。
     transactions 可按 ticker、market、action=buy/sell、start_date/end_date
+    ticker 只支持单个代码，不支持逗号批量；多个标的须分别查询。
     (YYYY-MM-DD，含首尾 UTC 日) 筛选。返回币种、成本/成交价和分页 next_offset；
     这些不是实时市值或总收益。失败返回 error，不能当成没有记录。
     """
@@ -1003,6 +1021,7 @@ def query_portfolio_ledger(
 
 
 ALL_TOOLS = [
+    set_news_notification,
     query_portfolio_ledger,
     search_memory,
     read_memory,

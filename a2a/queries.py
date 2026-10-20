@@ -49,6 +49,8 @@ def read_query(operation, params=None):
     offset = _integer(params.get("offset"), "offset", 0, 0, 1_000_000)
     market = str(params.get("market") or "").upper()
     ticker = str(params.get("ticker") or "").strip().upper()
+    if "," in ticker or "，" in ticker:
+        raise ValueError("ticker accepts one symbol only; query each ticker separately")
     if market and market not in MARKETS:
         raise ValueError("market must be US, CN, HK or CRYPTO")
     if len(ticker) > 20:

@@ -8,6 +8,7 @@ from agent.core import (
     run_news_triggered_analysis,
     run_trade_review_analysis,
 )
+from agent.news_delivery import portfolio_signature, unseen_news
 from db.repository import (
     create_job_run,
     finish_job_run,
@@ -110,6 +111,7 @@ def job_hourly_news_poll():
     try:
         holdings = get_open_holdings(session)
         tickers = [h.ticker for h in holdings]
+        signature = portfolio_signature(holdings)
     finally:
         session.close()
 
@@ -119,6 +121,8 @@ def job_hourly_news_poll():
 
     try:
         news_items = poll_news_for_portfolio(tickers)
+        with get_session() as db:
+            news_items = unseen_news(db, news_items, signature)
         headlines = sum(1 for n in news_items if n.get("category") == "headline")
         ticker_news = len(news_items) - headlines
         logger.info(
@@ -128,9 +132,25 @@ def job_hourly_news_poll():
         )
 
         if news_items:
-            result = run_news_triggered_analysis(news_items)
+            result = run_news_triggered_analysis(news_items, portfolio_signature=signature)
             if result:
-                notify(f"📰 新闻事件分析\n\n{result}")
+                decision = getattr(result, "decision", {})
+                if decision.get("status") != "recorded":
+                    return _finish_job_run(run_id, "failed", "新闻报告已保存，但缺少有效通知决策。")
+                if decision.get("notify") is True:
+                    if not notify(f"📰 新闻事件分析\n\n{result}"):
+                        return _finish_job_run(run_id, "failed", "新闻分析完成，但通知未送达。")
+                from db.models import AgentSession
+
+                with get_session() as db:
+                    analysis = db.get(AgentSession, result.session_id)
+                    if analysis:
+                        analysis.news_snapshot = {
+                            **(analysis.news_snapshot or {}),
+                            "processed": True,
+                            "notification": decision,
+                        }
+                        db.commit()
                 return _finish_job_run(run_id, "completed", result)
             else:
                 logger.info("No significant news impact detected.")

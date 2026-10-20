@@ -1,13 +1,20 @@
 """Tool-call timeout and identical-call loop guard for the agent graph."""
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+import time
+from typing import Any, Dict, Optional, Tuple
 
 from langchain_core.messages import ToolMessage
 
 from adapters.call_timeout import run_with_timeout_or_flag
 from agent.access import READ_ONLY_TOOLS
+from agent.tool_cache import cached_result
 from config import config
+
+try:
+    from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
+except ImportError:  # pragma: no cover
+    from concurrent.futures import ThreadPoolExecutor as _PoolExecutor
 
 
 def tool_call_fingerprint(name: str, args: Any) -> str:
@@ -55,7 +62,7 @@ def _prepare_tool_args(tool_name: str, args: dict, state: dict) -> dict:
     prepared = dict(args)
     if tool_name == "save_recommendation":
         prepared["session_id"] = state.get("session_id") or 0
-    if tool_name == "annotate_kline":
+    if tool_name in {"annotate_kline", "set_news_notification"}:
         prepared["state"] = state
     return prepared
 
@@ -121,9 +128,15 @@ def execute_tool_calls(
 
     history = messages[:ai_index]
     tool_map = {t.name: t for t in tools}
-    out_messages: List[ToolMessage] = []
+    out_messages: list = []
     halted = False
     batch_counts: Dict[str, int] = {}
+    # Only entirely read-only batches can run concurrently. Writes and chart
+    # persistence stay ordered, with no shared SQLAlchemy session across threads.
+    parallel = len(ai_msg.tool_calls) > 1 and all(
+        _tool_call_parts(tc)[0] in READ_ONLY_TOOLS for tc in ai_msg.tool_calls
+    )
+    executor = _PoolExecutor(max_workers=min(4, len(ai_msg.tool_calls))) if parallel else None
 
     for tc in ai_msg.tool_calls:
         name, args, tc_id = _tool_call_parts(tc)
@@ -180,14 +193,54 @@ def execute_tool_calls(
             )
             continue
 
+        cached = cached_result(history, name, args)
+        if cached is not None:
+            out_messages.append(
+                ToolMessage(
+                    content=cached["content"],
+                    tool_call_id=tc_id or "",
+                    name=name,
+                    additional_kwargs={"executed_at": cached["executed_at"], "cache_hit": True},
+                )
+            )
+            continue
         prepared = _prepare_tool_args(name, args, state)
+        if executor is not None:
+            out_messages.append(
+                (
+                    executor.submit(invoke_tool_with_timeout, tool, prepared, timeout),
+                    name,
+                    tc_id,
+                    time.time(),
+                )
+            )
+            continue
         result = invoke_tool_with_timeout(tool, prepared, timeout)
         out_messages.append(
             ToolMessage(
                 content=_serialize_tool_result(result),
                 tool_call_id=tc_id or "",
                 name=name,
+                additional_kwargs={"executed_at": time.time()},
             )
         )
 
-    return {"messages": out_messages, "tool_loop_halted": halted}
+    resolved = []
+    try:
+        for entry in out_messages:
+            if isinstance(entry, ToolMessage):
+                resolved.append(entry)
+            else:
+                future, name, tc_id, started = entry
+                resolved.append(
+                    ToolMessage(
+                        content=_serialize_tool_result(future.result()),
+                        tool_call_id=tc_id or "",
+                        name=name,
+                        additional_kwargs={"executed_at": started},
+                    )
+                )
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=False)
+    return {"messages": resolved, "tool_loop_halted": halted}

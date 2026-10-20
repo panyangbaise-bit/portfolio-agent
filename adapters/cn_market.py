@@ -11,6 +11,8 @@ import pandas as pd
 from adapters.base import MarketAdapter
 from adapters.call_timeout import run_with_timeout, run_with_timeout_or_flag
 from adapters.cn_index_map import resolve_csi_index_code
+from adapters.safe import error_payload
+from domain.instruments import resolve_cn_symbol
 
 try:
     from langsmith.utils import ContextThreadPoolExecutor as _PoolExecutor
@@ -61,32 +63,32 @@ class CNMarketAdapter(MarketAdapter):
 
     MARKET = "CN"
 
-    @staticmethod
-    def _is_fund(ticker: str) -> bool:
-        """Detect fund codes: 6-digit numeric codes (ETF联接, LOF, etc.)."""
-        return ticker.isdigit() and len(ticker) == 6
-
     def get_price(self, ticker: str) -> dict:
-        # For fund-like codes (starting with 0), try fund API directly
-        if self._is_fund(ticker) and ticker[0] == "0":
-            return self._safe_price(ticker, self._get_fund_price)
-        # For stock-like codes, try stock API first
         try:
-            return self._get_stock_price(ticker)
-        except ValueError:
-            if self._is_fund(ticker):
-                return self._safe_price(ticker, self._get_fund_price)
-            return {
-                "ticker": ticker,
-                "error": "not_found",
-                "message": f"Ticker {ticker} not found in stock list",
-            }
+            kind, code = resolve_cn_symbol(ticker)
+            if kind == "fund":
+                result = self._get_fund_price(code)
+            elif kind == "stock":
+                result = self._get_stock_price(code)
+            else:
+                rows = self._get_exchange_kline(code, "1mo", kind)
+                if not rows:
+                    raise ValueError(f"No {kind} data for {code}")
+                last = rows[-1]
+                result = {
+                    "price": last["close"],
+                    "currency": "CNY",
+                    "timestamp": last["date"],
+                    "observed_at": last["date"],
+                    "quote_type": "daily_close",
+                    "volume": last.get("volume"),
+                    "change_pct": round((last["close"] / rows[-2]["close"] - 1) * 100, 2)
+                    if len(rows) > 1 and rows[-2]["close"]
+                    else None,
+                }
+            return {**result, "ticker": ticker, "resolved_code": code, "asset_type": kind}
         except Exception as exc:
-            return {
-                "ticker": ticker,
-                "error": type(exc).__name__,
-                "message": str(exc) or type(exc).__name__,
-            }
+            return error_payload(exc, ticker=ticker)
 
     @staticmethod
     def _safe_price(ticker: str, fn) -> dict:
@@ -150,18 +152,46 @@ class CNMarketAdapter(MarketAdapter):
             "fetched_at": datetime.now().isoformat(),
         }
 
-    def get_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
+    def get_kline(self, ticker: str, period: str = "3mo") -> list[dict] | dict:
         try:
-            if self._is_fund(ticker) and ticker[0] == "0":
-                return self._get_fund_kline(ticker, period)
-            try:
-                return self._get_stock_kline(ticker, period)
-            except (ValueError, KeyError):
-                if self._is_fund(ticker):
-                    return self._get_fund_kline(ticker, period)
-                return []
-        except Exception:
-            return []
+            kind, code = resolve_cn_symbol(ticker)
+            if kind == "fund":
+                rows = self._get_fund_kline(code, period)
+            elif kind == "stock":
+                rows = self._get_stock_kline(code, period)
+            else:
+                rows = self._get_exchange_kline(code, period, kind)
+            return [{**row, "asset_type": kind, "resolved_code": code} for row in rows]
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker)
+
+    def _get_exchange_kline(self, ticker: str, period: str, kind: str) -> list[dict]:
+        days = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}.get(period, 90)
+        end = datetime.now(ZoneInfo("Asia/Shanghai"))
+        params = dict(
+            symbol=ticker,
+            period="daily",
+            start_date=(end - timedelta(days=days)).strftime("%Y%m%d"),
+            end_date=end.strftime("%Y%m%d"),
+        )
+        df = (
+            ak.index_zh_a_hist(**params)
+            if kind == "index"
+            else ak.fund_etf_hist_em(**params, adjust="qfq")
+        )
+        return [
+            {
+                "date": str(r["日期"])[:10],
+                "open": float(r["开盘"]),
+                "high": float(r["最高"]),
+                "low": float(r["最低"]),
+                "close": float(r["收盘"]),
+                "volume": float(r["成交量"]),
+                "volume_unit": "lot",
+                "series_kind": "ohlc",
+            }
+            for _, r in df.iterrows()
+        ]
 
     def _get_stock_kline(self, ticker: str, period: str = "3mo") -> list[dict]:
         days = {"1mo": 30, "3mo": 90, "6mo": 180, "1y": 365, "5y": 1825}.get(period, 90)
@@ -211,17 +241,17 @@ class CNMarketAdapter(MarketAdapter):
         ]
 
     def get_financials(self, ticker: str) -> dict:
-        if self._is_fund(ticker) and not self._ticker_looks_like_stock(ticker):
-            return {
-                "ticker": ticker,
-                "note": (
-                    "基金产品，无上市公司财报。请改用 get_fund_info 获取跟踪指数、费率与成分股。"
-                ),
-            }
         try:
-            return self._get_stock_financials(ticker)
-        except Exception:
-            return {"ticker": ticker, "note": "no financial data available"}
+            kind, code = resolve_cn_symbol(ticker)
+            if kind != "stock":
+                return {
+                    "ticker": ticker,
+                    "asset_type": kind,
+                    "note": "非上市公司，无公司财报。基金请用 get_fund_info，指数需分析成分暴露。",
+                }
+            return {**self._get_stock_financials(code), "ticker": ticker, "asset_type": kind}
+        except Exception as exc:
+            return error_payload(exc, ticker=ticker)
 
     def get_fund_info(self, ticker: str, top_constituents: int = 20) -> dict:
         """Fund/ETF overview with optional parallel enrichments (fees/alloc/constituents).
@@ -231,6 +261,10 @@ class CNMarketAdapter(MarketAdapter):
         degrades to empty fields + notes instead of blocking the agent.
         """
         try:
+            if ":" in ticker:
+                kind, ticker = resolve_cn_symbol(ticker)
+                if kind not in {"fund", "etf"}:
+                    raise ValueError("get_fund_info only accepts funds/ETFs")
             return self._get_fund_info_inner(ticker, top_constituents)
         except Exception as exc:
             from adapters.safe import error_payload

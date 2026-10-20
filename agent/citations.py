@@ -5,6 +5,8 @@ import html
 import re
 from urllib.parse import quote, urlsplit
 
+from agent.research import canonical_news_url
+
 CITATION_TOKEN = re.compile(r"\[\[cite:([^\]\s]+)\]\]")
 SOURCE_TOOLS = {"search_ticker_news", "get_market_headlines", "web_search"}
 
@@ -42,11 +44,16 @@ def annotate_sources(payload, sources):
     result = {key: annotate_sources(value, sources) for key, value in payload.items()}
     url = safe_source_url(payload.get("url"))
     if url and payload.get("title"):
-        ident = hashlib.sha256(url.encode()).hexdigest()[:16]
+        ident = hashlib.sha256(canonical_news_url(url).encode()).hexdigest()[:16]
         source = {
             "url": url,
             "title": _plain(payload["title"], 180),
             "summary": _plain(payload.get("summary") or payload.get("description"), 320),
+            "published_at": payload.get("published_at"),
+            "fetched_at": payload.get("fetched_at"),
+            "evidence_level": "snippet"
+            if payload.get("summary") or payload.get("description")
+            else "title_only",
         }
         # Keep the first snapshot, but allow a later retrieval to fill an empty summary.
         if ident not in sources or not sources[ident].get("summary"):

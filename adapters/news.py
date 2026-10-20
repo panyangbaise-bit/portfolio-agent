@@ -21,7 +21,7 @@ class WallStreetCNAdapter:
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] headlines fetch failed: {e}")
-            return []
+            raise
 
     def get_latest_news(self, limit: int = 10) -> list[dict]:
         """Latest information flow."""
@@ -38,7 +38,7 @@ class WallStreetCNAdapter:
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] latest fetch failed: {e}")
-            return []
+            raise
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         """Search articles by keyword (use ticker or Chinese name)."""
@@ -55,7 +55,7 @@ class WallStreetCNAdapter:
             return self._parse_items(items)
         except Exception as e:
             print(f"[news] search failed for '{query}': {e}")
-            return []
+            raise
 
     def get_hot_articles(self) -> list[dict]:
         """Trending hot articles."""
@@ -67,7 +67,7 @@ class WallStreetCNAdapter:
             return self._parse_items(items, is_hot=True)
         except Exception as e:
             print(f"[news] hot articles failed: {e}")
-            return []
+            raise
 
     def search_ticker_news(self, ticker: str, days: int = 7) -> list[dict]:
         """Search news for a specific ticker."""
@@ -113,7 +113,9 @@ class WallStreetCNAdapter:
                     "uri": resource.get("uri", ""),
                     "url": article_url,
                     "summary": (resource.get("content_short") or "")[:200],
-                    "published_at": datetime.fromtimestamp(ts).isoformat() if ts else None,
+                    "published_at": datetime.fromtimestamp(ts, timezone.utc).isoformat()
+                    if ts
+                    else None,
                     "author": (resource.get("author") or {}).get("display_name", ""),
                 }
             )

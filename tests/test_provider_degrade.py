@@ -35,7 +35,7 @@ def test_market_tools_degrade_on_provider_error(monkeypatch):
     assert price["error"] == "ConnectionError"
 
     kline = tools.get_kline.invoke({"ticker": "AAPL", "market": "US"})
-    assert kline == []
+    assert kline["error"] == "ConnectionError"
 
     fins = tools.get_financials.invoke({"ticker": "AAPL", "market": "US"})
     assert fins["error"] == "ConnectionError"
@@ -62,9 +62,11 @@ def test_news_tools_degrade_on_provider_error(monkeypatch):
 
     news = tools.search_ticker_news.invoke({"ticker": "苹果", "days": 1})
     assert news["results"] == []
+    assert news["error"] == "ConnectionError"
 
     headlines = tools.get_market_headlines.invoke({})
-    assert headlines == []
+    assert headlines["status"] == "error"
+    assert headlines["coverage"] == "unknown"
 
 
 def test_us_adapter_degrades(monkeypatch):
@@ -133,5 +135,5 @@ def test_cn_kline_degrades(monkeypatch):
 
     monkeypatch.setattr("adapters.cn_market.ak.stock_zh_a_hist", boom)
     monkeypatch.setattr("adapters.cn_market.ak.fund_open_fund_info_em", boom)
-    assert CNMarketAdapter().get_kline("600519") == []
-    assert CNMarketAdapter().get_kline("020357") == []
+    assert CNMarketAdapter().get_kline("600519")["error"] == "ConnectionError"
+    assert CNMarketAdapter().get_kline("020357")["error"] == "ConnectionError"

@@ -26,3 +26,25 @@ def test_poll_news_for_portfolio_merges_headlines_and_ticker_news(monkeypatch):
     assert "Oil jumps" in titles
     # Dedup by title
     assert len(titles) == len(set(titles))
+
+
+def test_poll_aliases_and_partial_outage_preserve_coverage_gaps(monkeypatch):
+    calls = []
+
+    class Partial:
+        def get_headlines(self, limit):
+            raise ConnectionError("offline")
+
+        def get_latest_news(self, limit):
+            return [{"title": "macro"}]
+
+        def search_ticker_news(self, ticker, days):
+            calls.append(ticker)
+            return []
+
+    monkeypatch.setattr("agent.core.news_adapter", Partial())
+    result = poll_news_for_portfolio(["DUOL"])
+    assert calls == ["多邻国"]
+    assert any(r.get("related_ticker") == "DUOL" and r["status"] == "empty" for r in result)
+    assert any(r.get("status") == "error" for r in result)
+    assert any(r["title"] == "macro" for r in result)
